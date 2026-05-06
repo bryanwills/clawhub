@@ -1158,13 +1158,16 @@ function makeSoftDeletePackageCtx(options?: {
   pkg?: Record<string, unknown> | null;
   releases?: Array<Record<string, unknown>>;
   user?: Record<string, unknown> | null;
+  publisherMembershipRole?: "owner" | "admin" | "publisher" | null;
 }) {
   const pkg = options?.pkg ?? makePackageDoc();
   const releases = options?.releases ?? [makeReleaseDoc()];
   const user = options?.user ?? { _id: "users:owner", role: "user" };
   const patch = vi.fn();
+  const insert = vi.fn();
   return {
     patch,
+    insert,
     ctx: {
       db: {
         get: vi.fn(async (id: string) => {
@@ -1186,10 +1189,43 @@ function makeSoftDeletePackageCtx(options?: {
               })),
             };
           }
+          if (table === "publisherMembers") {
+            return {
+              withIndex: vi.fn(() => ({
+                unique: vi.fn().mockResolvedValue(
+                  options?.publisherMembershipRole
+                    ? {
+                        _id: "publisherMembers:owner",
+                        publisherId: pkg?.ownerPublisherId,
+                        userId: user?._id,
+                        role: options.publisherMembershipRole,
+                      }
+                    : null,
+                ),
+              })),
+            };
+          }
+          if (table === "packageSearchDigest") {
+            return {
+              withIndex: vi.fn(() => ({
+                unique: vi.fn().mockResolvedValue({
+                  _id: "packageSearchDigest:demo",
+                  packageId: pkg?._id,
+                }),
+              })),
+            };
+          }
+          if (table === "packageCapabilitySearchDigest") {
+            return {
+              withIndex: vi.fn(() => ({
+                collect: vi.fn().mockResolvedValue([]),
+              })),
+            };
+          }
           throw new Error(`Unexpected table ${table}`);
         }),
         patch,
-        insert: vi.fn(),
+        insert,
         replace: vi.fn(),
         delete: vi.fn(),
         normalizeId: vi.fn(),
@@ -2152,6 +2188,32 @@ describe("packages public queries", () => {
         name: "demo-plugin",
       }),
     ).rejects.toThrow("Forbidden");
+  });
+
+  it("allows publisher admins to soft-delete packages owned by their publisher", async () => {
+    const { ctx, patch } = makeSoftDeletePackageCtx({
+      pkg: makePackageDoc({
+        ownerUserId: "users:publisher-owner",
+        ownerPublisherId: "publishers:team",
+      }),
+      user: { _id: "users:owner", role: "user" },
+      publisherMembershipRole: "admin",
+    });
+
+    await expect(
+      softDeletePackageInternalHandler(ctx, {
+        userId: "users:owner",
+        name: "demo-plugin",
+      }),
+    ).resolves.toMatchObject({ ok: true, alreadyDeleted: false });
+
+    expect(patch).toHaveBeenCalledWith(
+      "packages:demo",
+      expect.objectContaining({
+        softDeletedAt: expect.any(Number),
+        updatedAt: expect.any(Number),
+      }),
+    );
   });
 
   it("reserves private package placeholders without releases", async () => {

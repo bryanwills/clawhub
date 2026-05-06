@@ -29,6 +29,7 @@ vi.mock("../ui.js", () => uiMocks.moduleFactory());
 
 const {
   cmdDeletePackageTrustedPublisher,
+  cmdDeletePackage,
   cmdAppealPackage,
   cmdDownloadPackage,
   cmdExplorePackages,
@@ -516,6 +517,26 @@ describe("package commands", () => {
     } finally {
       await rm(workdir, { recursive: true, force: true });
     }
+  });
+
+  it("soft-deletes an owned package through the v1 package API", async () => {
+    httpMocks.apiRequest.mockResolvedValueOnce({ ok: true });
+
+    await expect(
+      cmdDeletePackage(makeOpts(), "@team/demo-plugin", { yes: true }, false),
+    ).resolves.toEqual({ ok: true });
+
+    expect(authTokenMocks.requireAuthToken).toHaveBeenCalledOnce();
+    expect(httpMocks.apiRequest).toHaveBeenCalledWith(
+      "https://clawhub.ai",
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/api/v1/packages/%40team%2Fdemo-plugin",
+        token: "tkn",
+      }),
+      expect.anything(),
+    );
+    expect(uiMocks.spinner.succeed).toHaveBeenCalledWith("OK. Deleted @team/demo-plugin");
   });
 
   it("sets package release moderation state", async () => {

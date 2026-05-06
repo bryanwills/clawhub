@@ -23,6 +23,7 @@ import { cmdMergeSkill, cmdRenameSkill } from "./cli/commands/ownership.js";
 import {
   cmdBackfillPackageArtifacts,
   cmdAppealPackage,
+  cmdDeletePackage,
   cmdDownloadPackage,
   cmdExplorePackages,
   cmdGetPackageTrustedPublisher,
@@ -471,6 +472,16 @@ registerCommand(packageCmd, ["package", "verify"])
       ...options,
       packageName: options.package,
     });
+  });
+
+registerCommand(packageCmd, ["package", "delete"])
+  .description("Soft-delete an owned package/plugin")
+  .argument("<name>", "Package name")
+  .option("--yes", "Skip confirmation")
+  .option("--json", "Output JSON")
+  .action(async (name, options) => {
+    const opts = await resolveGlobalOpts();
+    await cmdDeletePackage(opts, name, options, isInputAllowed());
   });
 
 registerCommand(packageCmd, ["package", "moderate"], "moderator")

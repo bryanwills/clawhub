@@ -45,6 +45,7 @@ import {
   summarizePackageForSearch,
   toConvexSafeJsonValue,
 } from "./lib/packageRegistry";
+import { extractPackageDigestFields, upsertPackageSearchDigest } from "./lib/packageSearchDigest";
 import { isPackageBlockedFromPublic, resolvePackageReleaseScanStatus } from "./lib/packageSecurity";
 import { toPublicPublisher } from "./lib/public";
 import {
@@ -2106,8 +2107,15 @@ export const softDeletePackageInternal = internalMutation({
     const pkg = await getPackageByNormalizedName(ctx, normalizedName);
     if (!pkg) throw new Error("Package not found");
 
-    if (pkg.ownerUserId !== args.userId) {
-      assertModerator(user);
+    if (user.role === "moderator" || user.role === "admin") {
+      // Staff can moderate packages outside their own publisher memberships.
+    } else {
+      await assertCanManageOwnedResource(ctx, {
+        actor: user,
+        ownerUserId: pkg.ownerUserId,
+        ownerPublisherId: pkg.ownerPublisherId,
+        allowedPublisherRoles: ["admin"],
+      });
     }
 
     if (pkg.softDeletedAt) {
@@ -2131,9 +2139,14 @@ export const softDeletePackageInternal = internalMutation({
       releaseCount += 1;
     }
 
-    await ctx.db.patch(pkg._id, {
+    const packagePatch = {
       softDeletedAt: now,
       updatedAt: now,
+    };
+    await ctx.db.patch(pkg._id, packagePatch);
+    await upsertPackageSearchDigest(ctx, {
+      ...extractPackageDigestFields(pkg),
+      ...packagePatch,
     });
 
     return {

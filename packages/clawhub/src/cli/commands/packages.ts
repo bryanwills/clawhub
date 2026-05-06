@@ -31,8 +31,10 @@ import {
   ApiV1PackageTrustedPublisherResponseSchema,
   ApiV1PackageVersionListResponseSchema,
   ApiV1PackageVersionResponseSchema,
+  ApiV1DeleteResponseSchema,
   ApiV1PublishTokenMintResponseSchema,
   normalizeOpenClawExternalPluginCompatibility,
+  parseArk,
   type PackageArtifactSummary,
   type PackageAppealListStatus,
   type PackageAppealStatus,
@@ -54,7 +56,7 @@ import { getOptionalAuthToken, requireAuthToken } from "../authToken.js";
 import { getRegistry } from "../registry.js";
 import { titleCase } from "../slug.js";
 import type { GlobalOpts } from "../types.js";
-import { createSpinner, fail, formatError } from "../ui.js";
+import { createSpinner, fail, formatError, isInteractive, promptConfirm } from "../ui.js";
 import {
   fetchGitHubSource,
   normalizeGitHubRepo,
@@ -128,6 +130,11 @@ type PackageDownloadOptions = {
   tag?: string;
   output?: string;
   force?: boolean;
+  json?: boolean;
+};
+
+type PackageDeleteOptions = {
+  yes?: boolean;
   json?: boolean;
 };
 
@@ -1002,6 +1009,45 @@ export async function cmdVerifyPackage(
     }
   } catch (error) {
     spinner?.fail(formatError(error));
+    throw error;
+  }
+}
+
+export async function cmdDeletePackage(
+  opts: GlobalOpts,
+  nameArg: string,
+  options: PackageDeleteOptions,
+  inputAllowed: boolean,
+) {
+  const name = nameArg.trim();
+  if (!name) fail("Package name required");
+  const allowPrompt = isInteractive() && inputAllowed !== false;
+
+  if (!options.yes) {
+    if (!allowPrompt) fail("Pass --yes (no input)");
+    const ok = await promptConfirm(`Delete package ${name}? (soft delete, owner/moderator/admin)`);
+    if (!ok) return undefined;
+  }
+
+  const token = await requireAuthToken();
+  const registry = await getRegistry(opts, { cache: true });
+  const spinner = createSpinner(`Deleting ${name}`);
+  try {
+    const result = await apiRequest(
+      registry,
+      {
+        method: "DELETE",
+        path: `${ApiRoutes.packages}/${encodeURIComponent(name)}`,
+        token,
+      },
+      ApiV1DeleteResponseSchema,
+    );
+    spinner.succeed(`OK. Deleted ${name}`);
+    const parsed = parseArk(ApiV1DeleteResponseSchema, result, "Package delete response");
+    if (options.json) console.log(JSON.stringify(parsed, null, 2));
+    return parsed;
+  } catch (error) {
+    spinner.fail(formatError(error));
     throw error;
   }
 }
