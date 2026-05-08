@@ -88,7 +88,7 @@ export function DevPersonaFab() {
   const activeHandle = me?.handle ? `@${me.handle}` : null;
 
   return (
-    <div className="fixed right-5 bottom-24 z-[70] flex flex-col items-end gap-2 sm:right-6">
+    <div className="fixed right-5 bottom-5 z-[70] flex flex-col items-end gap-2 sm:right-6 sm:bottom-6">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
