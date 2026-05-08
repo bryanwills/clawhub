@@ -89,12 +89,11 @@ export function DevPersonaFab() {
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            size="sm"
-            className="h-11 gap-2 rounded-full border border-[color:var(--line)] bg-[color:var(--surface)] px-4 text-[color:var(--ink)] shadow-[var(--shadow)] hover:bg-[color:var(--surface-subtle)]"
+            size="icon-lg"
+            className="h-14 w-14 rounded-full border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink)] shadow-[var(--shadow)] hover:bg-[color:var(--surface-subtle)]"
             aria-label="Open local dev personas"
           >
-            <Wrench size={16} aria-hidden="true" />
-            <span>Dev</span>
+            <Wrench size={22} aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-[220px]">
