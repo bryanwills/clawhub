@@ -74,6 +74,7 @@ import type * as lib_packageRegistry from "../lib/packageRegistry.js";
 import type * as lib_packageSearchDigest from "../lib/packageSearchDigest.js";
 import type * as lib_packageSecurity from "../lib/packageSecurity.js";
 import type * as lib_public from "../lib/public.js";
+import type * as lib_publicRouteReservations from "../lib/publicRouteReservations.js";
 import type * as lib_publishLimits from "../lib/publishLimits.js";
 import type * as lib_publishers from "../lib/publishers.js";
 import type * as lib_reporting from "../lib/reporting.js";
@@ -203,6 +204,7 @@ declare const fullApi: ApiFromModules<{
   "lib/packageSearchDigest": typeof lib_packageSearchDigest;
   "lib/packageSecurity": typeof lib_packageSecurity;
   "lib/public": typeof lib_public;
+  "lib/publicRouteReservations": typeof lib_publicRouteReservations;
   "lib/publishLimits": typeof lib_publishLimits;
   "lib/publishers": typeof lib_publishers;
   "lib/reporting": typeof lib_reporting;

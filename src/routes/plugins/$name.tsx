@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
-import { AlertTriangle, ExternalLink, Download } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { DetailHero, DetailPageShell } from "../../components/DetailPageShell";
 import { DetailSecuritySummary } from "../../components/DetailSecuritySummary";
@@ -554,7 +554,7 @@ export function PluginDetailPage({
                 <a href="/plugins">plugins</a>
                 <span aria-hidden="true">/</span>
                 <a href={owner?.handle ? `/u/${encodeURIComponent(owner.handle)}` : "#"}>
-                  {owner?.handle ?? owner?.displayName ?? owner?._id ?? "unknown"}
+                  {owner?.handle ?? owner?.displayName ?? "unknown"}
                 </a>
                 <span aria-hidden="true">/</span>
                 <a href="/plugins">plugins</a>
