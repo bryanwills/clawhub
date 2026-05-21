@@ -2095,6 +2095,75 @@ describe("httpApiV1 handlers", () => {
     expect(json.moderation.isSuspicious).toBe(true);
   });
 
+  it("returns skill trust card by tag", async () => {
+    const trustCard = {
+      format: "clawhub.skill.trust-card.v1",
+      subject: {
+        kind: "skill",
+        slug: "demo",
+        displayName: "Demo",
+        version: "1.0.0",
+      },
+      artifact: {
+        fingerprint: "sha256:release",
+        files: [{ path: "SKILL.md", size: 42, sha256: "sha256:file" }],
+      },
+      audit: {
+        status: "pass",
+        summary: "No static findings.",
+        reasonCodes: [],
+        scanners: {
+          static: {
+            status: "clean",
+            summary: "No static findings.",
+            reasonCodes: [],
+            engineVersion: "static-v1",
+            checkedAt: 123,
+          },
+        },
+      },
+      signature: { status: "unsigned" },
+    };
+    const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
+      if ("slug" in args) {
+        return {
+          skill: {
+            _id: "skills:1",
+            slug: "demo",
+            displayName: "Demo",
+            tags: { latest: "skillVersions:1", stable: "skillVersions:1" },
+            stats: {},
+            createdAt: 1,
+            updatedAt: 2,
+          },
+          latestVersion: null,
+          owner: null,
+          moderationInfo: null,
+        };
+      }
+      if ("versionId" in args) {
+        return {
+          _id: "skillVersions:1",
+          version: "1.0.0",
+          createdAt: 3,
+          files: [],
+          trustCard,
+        };
+      }
+      return null;
+    });
+    const runMutation = vi.fn().mockResolvedValue(okRate());
+    const response = await __handlers.skillsGetRouterV1Handler(
+      makeCtx({ runQuery, runMutation }),
+      new Request("https://example.com/api/v1/skills/demo/trust-card?tag=stable"),
+    );
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.skill).toEqual({ slug: "demo", displayName: "Demo" });
+    expect(json.version).toEqual({ version: "1.0.0", createdAt: 3 });
+    expect(json.trustCard).toEqual(trustCard);
+  });
+
   it("treats completed llm analysis without verdict as error", async () => {
     const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
       if ("slug" in args) {

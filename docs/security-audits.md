@@ -172,6 +172,26 @@ ClawScan does not treat a scary-looking capability as automatically malicious.
 It asks whether the capability is disclosed, purpose-aligned, and supported by
 the release's stated use case.
 
+## Skill trust cards
+
+Every newly published skill version gets a machine-readable trust card. The card
+records the exact version, publisher, verified source metadata when available,
+file hashes, declared capabilities, static audit result, and signature status.
+
+Trust cards are meant for installers, automation, and reviewers that need a stable
+release record instead of scraping UI text. Fetch one with:
+
+```sh
+clawhub skill verify <slug>
+```
+
+The same data is available at `/api/v1/skills/<slug>/trust-card`. Add
+`?version=<version>` or `?tag=<tag>` to verify a specific release.
+
+Current cards report `signature: unsigned` until ClawHub ships release signing.
+Unsigned still means the artifact was hashed and audited by ClawHub; it does not
+prove third-party attestation or offline integrity.
+
 ## Publisher notes
 
 Publishers can add a note when publishing a skill or plugin. On the Security

@@ -19,7 +19,7 @@ vi.mock("../registry.js", () => registryMocks.moduleFactory());
 vi.mock("../authToken.js", () => authTokenMocks.moduleFactory());
 vi.mock("../ui.js", () => uiMocks.moduleFactory());
 
-const { cmdInspect } = await import("./inspect");
+const { cmdInspect, cmdVerifySkill } = await import("./inspect");
 
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -285,6 +285,58 @@ describe("cmdInspect", () => {
   it("rejects when both version and tag are provided", async () => {
     await expect(
       cmdInspect(makeGlobalOpts(), "demo", { version: "1.0.0", tag: "latest" }),
+    ).rejects.toThrow("Use either --version or --tag");
+  });
+});
+
+describe("cmdVerifySkill", () => {
+  it("fetches and prints a skill trust card", async () => {
+    httpMocks.apiRequest.mockResolvedValueOnce({
+      skill: { slug: "demo", displayName: "Demo" },
+      version: { version: "1.2.3", createdAt: 3 },
+      trustCard: {
+        subject: { kind: "skill", slug: "demo", displayName: "Demo", version: "1.2.3" },
+        publisher: { handle: "acme" },
+        source: {
+          kind: "github",
+          repo: "acme/demo",
+          commit: "0123456789abcdef",
+          path: "skills/demo",
+        },
+        artifact: {
+          fingerprint: "sha256:release",
+          files: [{ path: "SKILL.md", size: 42, sha256: "sha256:file" }],
+        },
+        capabilities: {
+          tags: ["github", "shell"],
+          requires: { env: ["DEMO_TOKEN"], bins: ["gh"] },
+        },
+        audit: {
+          status: "pass",
+          summary: "No static findings.",
+          reasonCodes: [],
+        },
+        signature: { status: "unsigned" },
+      },
+    });
+
+    await cmdVerifySkill(makeGlobalOpts(), "demo", { tag: "latest" });
+
+    const request = httpMocks.apiRequest.mock.calls[0]?.[1];
+    const url = new URL(String(request?.url));
+    expect(url.pathname).toBe("/api/v1/skills/demo/trust-card");
+    expect(url.searchParams.get("tag")).toBe("latest");
+    expect(mockLog).toHaveBeenCalledWith("demo@1.2.3 trust");
+    expect(mockLog).toHaveBeenCalledWith("Audit: PASS");
+    expect(mockLog).toHaveBeenCalledWith("Signature: unsigned");
+    expect(mockLog).toHaveBeenCalledWith("Source: acme/demo@0123456789ab skills/demo");
+    expect(mockLog).toHaveBeenCalledWith("Capabilities: github, shell");
+    expect(mockLog).toHaveBeenCalledWith("Requires: env=DEMO_TOKEN; bins=gh");
+  });
+
+  it("rejects when both version and tag are provided", async () => {
+    await expect(
+      cmdVerifySkill(makeGlobalOpts(), "demo", { version: "1.0.0", tag: "latest" }),
     ).rejects.toThrow("Use either --version or --tag");
   });
 });

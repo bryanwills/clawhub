@@ -13,6 +13,7 @@ import {
   escalateSkillByIdInternal,
   escalateByVtInternal,
   insertVersion,
+  updateVersionDepRegistryAnalysisInternal,
   updateSkillVersionStaticScanInternal,
 } from "./skills";
 
@@ -24,6 +25,9 @@ const insertVersionHandler = (insertVersion as unknown as WrappedHandler<Record<
   ._handler;
 const updateSkillVersionStaticScanHandler = (
   updateSkillVersionStaticScanInternal as unknown as WrappedHandler<Record<string, unknown>>
+)._handler;
+const updateVersionDepRegistryAnalysisHandler = (
+  updateVersionDepRegistryAnalysisInternal as unknown as WrappedHandler<Record<string, unknown>>
 )._handler;
 const approveSkillByHashHandler = (
   approveSkillByHashInternal as unknown as WrappedHandler<Record<string, unknown>>
@@ -88,6 +92,14 @@ function createPublishArgs(overrides?: Partial<Record<string, unknown>>) {
       frontmatter: { description: "test" },
       metadata: {},
       clawdis: {},
+    },
+    staticScan: {
+      status: "clean",
+      reasonCodes: ["scanner.static.clean"],
+      findings: [],
+      summary: "No static findings.",
+      engineVersion: "test-static",
+      checkedAt: 1,
     },
     embedding: [0.1, 0.2],
     ...overrides,
@@ -1383,12 +1395,37 @@ describe("skills anti-spam guards", () => {
   });
 
   it("schedules owner autoban when a latest version static scan becomes malicious", async () => {
+    const trustCard = {
+      format: "clawhub.skill.trust-card.v1",
+      generatedAt: 1,
+      generator: { name: "clawhub", version: "skill-trust-card-v1" },
+      subject: { kind: "skill", slug: "spam-skill", displayName: "Spam Skill", version: "1.0.0" },
+      publisher: { userId: "users:owner" },
+      artifact: { fingerprint: "f".repeat(64), files: [] },
+      capabilities: {},
+      audit: {
+        status: "pass",
+        summary: "No static findings.",
+        reasonCodes: ["scanner.static.clean"],
+        scanners: {
+          static: {
+            status: "clean",
+            summary: "No static findings.",
+            reasonCodes: ["scanner.static.clean"],
+            engineVersion: "v2.1.0",
+            checkedAt: 1,
+          },
+        },
+      },
+      signature: { status: "unsigned" },
+    };
     const version = {
       _id: "skillVersions:1",
       skillId: "skills:1",
       version: "1.0.0",
       staticScan: undefined,
       sha256hash: "h".repeat(64),
+      trustCard,
     };
     const skill = {
       _id: "skills:1",
@@ -1456,6 +1493,23 @@ describe("skills anti-spam guards", () => {
     );
 
     expect(patch).toHaveBeenCalledWith(
+      "skillVersions:1",
+      expect.objectContaining({
+        trustCard: expect.objectContaining({
+          audit: expect.objectContaining({
+            status: "malicious",
+            reasonCodes: ["malicious.install_terminal_payload"],
+            scanners: expect.objectContaining({
+              static: expect.objectContaining({
+                status: "malicious",
+                engineVersion: "v2.2.0",
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(patch).toHaveBeenCalledWith(
       "skills:1",
       expect.objectContaining({
         moderationStatus: "hidden",
@@ -1471,6 +1525,110 @@ describe("skills anti-spam guards", () => {
         slug: "spam-skill",
         sha256hash: "h".repeat(64),
         trigger: "malicious.install_terminal_payload",
+      }),
+    );
+  });
+
+  it("refreshes the trust card when dependency registry analysis changes static scan status", async () => {
+    const version = {
+      _id: "skillVersions:1",
+      skillId: "skills:1",
+      version: "1.0.0",
+      staticScan: {
+        status: "clean",
+        reasonCodes: ["scanner.static.clean"],
+        findings: [],
+        summary: "No static findings.",
+        engineVersion: "v2.2.0",
+        checkedAt: 1,
+      },
+      trustCard: {
+        format: "clawhub.skill.trust-card.v1",
+        generatedAt: 1,
+        generator: { name: "clawhub", version: "skill-trust-card-v1" },
+        subject: {
+          kind: "skill",
+          slug: "dep-risk",
+          displayName: "Dep Risk",
+          version: "1.0.0",
+        },
+        publisher: { userId: "users:owner" },
+        artifact: { fingerprint: "f".repeat(64), files: [] },
+        capabilities: {},
+        audit: {
+          status: "pass",
+          summary: "No static findings.",
+          reasonCodes: ["scanner.static.clean"],
+          scanners: {
+            static: {
+              status: "clean",
+              summary: "No static findings.",
+              reasonCodes: ["scanner.static.clean"],
+              engineVersion: "v2.2.0",
+              checkedAt: 1,
+            },
+          },
+        },
+        signature: { status: "unsigned" },
+      },
+    };
+    const skill = {
+      _id: "skills:1",
+      slug: "dep-risk",
+      latestVersionId: "skillVersions:1",
+      ownerUserId: undefined,
+      moderationFlags: undefined,
+      moderationReason: undefined,
+      manualOverride: undefined,
+      softDeletedAt: undefined,
+    };
+    const patch = vi.fn();
+    const db = {
+      get: vi.fn(async (id: string) => {
+        if (id === "skillVersions:1") return version;
+        if (id === "skills:1") return skill;
+        return null;
+      }),
+      query: vi.fn((table: string) => {
+        const globalStatsQuery = buildGlobalStatsQuery(table);
+        if (globalStatsQuery) return globalStatsQuery;
+        throw new Error(`unexpected table ${table}`);
+      }),
+      patch,
+      normalizeId: vi.fn(),
+    };
+
+    await updateVersionDepRegistryAnalysisHandler(
+      { db } as never,
+      {
+        versionId: "skillVersions:1",
+        depRegistryAnalysis: {
+          status: "suspicious",
+          results: [],
+          notFoundPackages: ["phantom-dep"],
+          unresolvedPackages: [],
+          summary: "Missing dependency.",
+          checkedAt: 2,
+        },
+      } as never,
+    );
+
+    expect(patch).toHaveBeenCalledWith(
+      "skillVersions:1",
+      expect.objectContaining({
+        depRegistryScanStatus: "suspicious",
+        trustCard: expect.objectContaining({
+          audit: expect.objectContaining({
+            status: "review",
+            reasonCodes: ["suspicious.dep_not_found_on_registry"],
+            scanners: expect.objectContaining({
+              static: expect.objectContaining({
+                status: "suspicious",
+                checkedAt: 2,
+              }),
+            }),
+          }),
+        }),
       }),
     );
   });

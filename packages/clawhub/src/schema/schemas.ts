@@ -233,6 +233,7 @@ export const ApiV1SkillResponseSchema = type({
     createdAt: "number",
     changelog: "string",
     license: '"MIT-0"|null?',
+    trustCard: "unknown?",
   }).or("null"),
   owner: type({
     handle: "string|null",
@@ -431,11 +432,24 @@ export const ApiV1SkillVersionResponseSchema = type({
     changelogSource: '"auto"|"user"|null?',
     license: '"MIT-0"|null?',
     files: "unknown?",
+    trustCard: "unknown?",
   }).or("null"),
   skill: type({
     slug: "string",
     displayName: "string",
   }).or("null"),
+});
+
+export const ApiV1SkillTrustCardResponseSchema = type({
+  skill: type({
+    slug: "string",
+    displayName: "string",
+  }).or("null"),
+  version: type({
+    version: "string",
+    createdAt: "number?",
+  }).or("null"),
+  trustCard: "unknown",
 });
 
 export const ApiV1SkillResolveResponseSchema = type({

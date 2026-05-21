@@ -110,6 +110,7 @@ type PublicSkillVersionResponse = {
   llmAnalysis?: Doc<"skillVersions">["llmAnalysis"];
   staticScan?: PublicSkillVersionStaticScan;
   capabilityTags?: string[];
+  trustCard?: Doc<"skillVersions">["trustCard"];
 };
 
 type ModerationEvidence = {
@@ -720,6 +721,7 @@ export async function skillsGetRouterV1Handler(ctx: ActionCtx, request: Request)
               createdAt: result.latestVersion.createdAt,
               changelog: result.latestVersion.changelog,
               license: result.latestVersion.parsed?.license ?? null,
+              trustCard: result.latestVersion.trustCard ?? null,
             }
           : null,
         metadata: result.latestVersion?.parsed?.clawdis
@@ -836,6 +838,51 @@ export async function skillsGetRouterV1Handler(ctx: ActionCtx, request: Request)
     );
   }
 
+  if (second === "trust-card" && segments.length === 2) {
+    const url = new URL(request.url);
+    const versionParam = url.searchParams.get("version")?.trim();
+    const tagParam = url.searchParams.get("tag")?.trim();
+    if (versionParam && tagParam) return text("Use either version or tag", 400, rate.headers);
+
+    const result = (await ctx.runQuery(api.skills.getBySlug, { slug })) as GetBySlugResult;
+    if (!result?.skill) {
+      const hidden = await describeOwnerVisibleSkillState(ctx, request, slug);
+      if (hidden) return text(hidden.message, hidden.status, rate.headers);
+      return text("Skill not found", 404, rate.headers);
+    }
+
+    let version = result.latestVersion;
+    if (versionParam) {
+      version = await ctx.runQuery(api.skills.getVersionBySkillAndVersion, {
+        skillId: result.skill._id,
+        version: versionParam,
+      });
+    } else if (tagParam) {
+      const versionId = result.skill.tags[tagParam];
+      version = versionId ? await ctx.runQuery(api.skills.getVersionById, { versionId }) : null;
+    }
+
+    if (!version) return text("Version not found", 404, rate.headers);
+    if (version.softDeletedAt) return text("Version not available", 410, rate.headers);
+    if (!version.trustCard) return text("Trust card not found", 404, rate.headers);
+
+    return json(
+      {
+        skill: {
+          slug: result.skill.slug,
+          displayName: result.skill.displayName,
+        },
+        version: {
+          version: version.version,
+          createdAt: version.createdAt,
+        },
+        trustCard: version.trustCard,
+      },
+      200,
+      rate.headers,
+    );
+  }
+
   if (second === "versions" && segments.length === 2) {
     const skillResult = (await ctx.runQuery(api.skills.getBySlug, { slug })) as GetBySlugResult;
     if (!skillResult?.skill) return text("Skill not found", 404, rate.headers);
@@ -889,6 +936,7 @@ export async function skillsGetRouterV1Handler(ctx: ActionCtx, request: Request)
             contentType: normalizeTextContentType(file.path, file.contentType) ?? null,
           })),
           security: security ?? undefined,
+          trustCard: version.trustCard ?? null,
         },
       },
       200,
@@ -960,6 +1008,7 @@ export async function skillsGetRouterV1Handler(ctx: ActionCtx, request: Request)
             }
           : null,
         security,
+        trustCard: version.trustCard ?? null,
       },
       200,
       rate.headers,

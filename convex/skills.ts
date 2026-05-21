@@ -116,6 +116,7 @@ import {
 } from "./lib/skillSearchDigest";
 import { assertValidSkillSlug, normalizeSkillSlug } from "./lib/skillSlugValidator";
 import { readCanonicalStat } from "./lib/skillStats";
+import { buildSkillTrustCard, refreshSkillTrustCardAudit } from "./lib/skillTrustCard";
 import { runStaticPublishScan } from "./lib/staticPublishScan";
 import { adjustUserSkillStatsForSkillChange } from "./lib/userSkillStats";
 import schema from "./schema";
@@ -1647,6 +1648,7 @@ type PublicSkillVersion = {
   sha256hash?: string;
   vtAnalysis?: Doc<"skillVersions">["vtAnalysis"];
   llmAnalysis?: Doc<"skillVersions">["llmAnalysis"];
+  trustCard?: Doc<"skillVersions">["trustCard"];
   staticScan?: {
     status: NonNullable<Doc<"skillVersions">["staticScan"]>["status"];
     reasonCodes: NonNullable<Doc<"skillVersions">["staticScan"]>["reasonCodes"];
@@ -1863,6 +1865,7 @@ function toPublicSkillVersion(
     sha256hash: version.sha256hash,
     vtAnalysis: version.vtAnalysis,
     llmAnalysis: version.llmAnalysis,
+    trustCard: version.trustCard,
     clawScanNote: version.clawScanNote,
     staticScan: version.staticScan
       ? {
@@ -6228,10 +6231,21 @@ export const updateSkillVersionStaticScanInternal = internalMutation({
     if (!version || version.skillId !== args.skillId)
       return { ok: true as const, skipped: "missing" as const };
 
+    const now = Date.now();
+    const trustCard = refreshSkillTrustCardAudit({
+      trustCard: version.trustCard,
+      staticScan: args.staticScan,
+      generatedAt: now,
+    });
     await ctx.db.patch(version._id, {
       staticScan: args.staticScan,
+      ...(trustCard ? { trustCard } : {}),
     });
-    const updatedVersion = { ...version, staticScan: args.staticScan };
+    const updatedVersion = {
+      ...version,
+      staticScan: args.staticScan,
+      ...(trustCard ? { trustCard } : {}),
+    };
 
     const skill = await ctx.db.get(args.skillId);
     if (!skill) return { ok: true as const, skipped: "missing" as const };
@@ -6240,7 +6254,6 @@ export const updateSkillVersionStaticScanInternal = internalMutation({
     }
 
     const owner = skill.ownerUserId ? await ctx.db.get(skill.ownerUserId) : null;
-    const now = Date.now();
     const basePatch = buildScannerModerationPatchFromVersion({
       owner,
       version: updatedVersion,
@@ -6281,16 +6294,23 @@ export const updateVersionDepRegistryAnalysisInternal = internalMutation({
     const version = await ctx.db.get(args.versionId);
     if (!version) return { ok: true as const, skipped: "missing" as const };
 
+    const now = Date.now();
     const staticScan = mergeDepRegistryFinding({
       staticScan: version.staticScan,
       analysis: args.depRegistryAnalysis,
       statusFromCodes: verdictFromCodes,
       summarizeCodes: summarizeReasonCodes,
     });
+    const trustCard = refreshSkillTrustCardAudit({
+      trustCard: version.trustCard,
+      staticScan,
+      generatedAt: now,
+    });
     const versionPatch = {
       depRegistryAnalysis: args.depRegistryAnalysis,
       depRegistryScanStatus: args.depRegistryAnalysis.status,
       staticScan,
+      ...(trustCard ? { trustCard } : {}),
     };
 
     await ctx.db.patch(version._id, versionPatch);
@@ -9315,6 +9335,16 @@ export const insertVersion = internalMutation({
     changelogSource: v.optional(v.union(v.literal("auto"), v.literal("user"))),
     tags: v.optional(v.array(v.string())),
     fingerprint: v.string(),
+    source: v.optional(
+      v.object({
+        kind: v.literal("github"),
+        url: v.string(),
+        repo: v.string(),
+        ref: v.string(),
+        commit: v.string(),
+        path: v.string(),
+      }),
+    ),
     bypassNewSkillRateLimit: v.optional(v.boolean()),
     forkOf: v.optional(
       v.object({
@@ -9825,6 +9855,29 @@ export const insertVersion = internalMutation({
     }
 
     const clawScanNote = normalizeClawScanNoteForWrite(args.clawScanNote);
+    const trustPublisherId = skill.ownerPublisherId ?? ownerPublisherId;
+    const trustPublisher = await getOwnerPublisher(ctx, {
+      ownerPublisherId: trustPublisherId,
+      ownerUserId: userId,
+    });
+    const trustCard = buildSkillTrustCard({
+      slug: skill.slug,
+      displayName: args.displayName,
+      version: args.version,
+      fingerprint: args.fingerprint,
+      files: args.files,
+      parsed: args.parsed,
+      source: args.source,
+      capabilityTags: args.capabilityTags,
+      staticScan: args.staticScan,
+      publisher: {
+        userId,
+        ...(trustPublisherId ? { publisherId: trustPublisherId } : {}),
+        ...(trustPublisher?.handle ? { handle: trustPublisher.handle } : {}),
+        ...(trustPublisher?.displayName ? { displayName: trustPublisher.displayName } : {}),
+      },
+      generatedAt: now,
+    });
 
     const versionId = await ctx.db.insert("skillVersions", {
       skillId: skill._id,
@@ -9836,6 +9889,7 @@ export const insertVersion = internalMutation({
       files: args.files,
       parsed: args.parsed,
       capabilityTags: args.capabilityTags,
+      trustCard,
       staticScan: args.staticScan,
       createdBy: userId,
       createdAt: now,

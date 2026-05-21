@@ -79,6 +79,8 @@ export type PublishVersionArgs = {
   }>;
 };
 
+type VerifiedSkillTrustCardSource = Omit<NonNullable<PublishVersionArgs["source"]>, "importedAt">;
+
 export type PublishOptions = {
   bypassGitHubAccountAge?: boolean;
   bypassNewSkillRateLimit?: boolean;
@@ -86,6 +88,7 @@ export type PublishOptions = {
   skipBackup?: boolean;
   skipWebhook?: boolean;
   ownerPublisherId?: Id<"publishers">;
+  trustCardSource?: VerifiedSkillTrustCardSource;
   // Explicit opt-in to owner migration. The `insertVersion` mutation refuses
   // to rewrite a skill's `ownerPublisherId` unless this is `true`, so default
   // publishes (including older CLIs that never pass this flag) can never
@@ -319,6 +322,16 @@ export async function publishVersionForUser(
     changelogSource,
     tags: args.tags?.map((tag) => tag.trim()).filter(Boolean),
     fingerprint,
+    source: options.trustCardSource
+      ? {
+          kind: options.trustCardSource.kind,
+          url: options.trustCardSource.url,
+          repo: options.trustCardSource.repo,
+          ref: options.trustCardSource.ref,
+          commit: options.trustCardSource.commit,
+          path: options.trustCardSource.path,
+        }
+      : undefined,
     forkOf: args.forkOf
       ? {
           slug: args.forkOf.slug.trim().toLowerCase(),

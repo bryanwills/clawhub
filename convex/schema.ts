@@ -374,6 +374,98 @@ const packageFilesValidator = v.array(
   }),
 );
 
+const skillTrustCardValidator = v.object({
+  format: v.literal("clawhub.skill.trust-card.v1"),
+  generatedAt: v.number(),
+  generator: v.object({
+    name: v.literal("clawhub"),
+    version: v.string(),
+  }),
+  subject: v.object({
+    kind: v.literal("skill"),
+    slug: v.string(),
+    displayName: v.string(),
+    version: v.string(),
+  }),
+  publisher: v.object({
+    userId: v.id("users"),
+    publisherId: v.optional(v.id("publishers")),
+    handle: v.optional(v.string()),
+    displayName: v.optional(v.string()),
+  }),
+  source: v.optional(
+    v.object({
+      kind: v.literal("github"),
+      url: v.string(),
+      repo: v.string(),
+      ref: v.string(),
+      commit: v.string(),
+      path: v.string(),
+    }),
+  ),
+  artifact: v.object({
+    fingerprint: v.string(),
+    license: v.optional(v.literal(PLATFORM_SKILL_LICENSE)),
+    files: v.array(
+      v.object({
+        path: v.string(),
+        size: v.number(),
+        sha256: v.string(),
+        contentType: v.optional(v.string()),
+      }),
+    ),
+  }),
+  capabilities: v.object({
+    tags: v.optional(v.array(v.string())),
+    os: v.optional(v.array(v.string())),
+    requires: v.optional(
+      v.object({
+        env: v.optional(v.array(v.string())),
+        bins: v.optional(v.array(v.string())),
+        anyBins: v.optional(v.array(v.string())),
+        config: v.optional(v.array(v.string())),
+      }),
+    ),
+    envVars: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          required: v.optional(v.boolean()),
+          description: v.optional(v.string()),
+        }),
+      ),
+    ),
+    install: v.optional(v.array(v.any())),
+    dependencies: v.optional(v.array(v.any())),
+  }),
+  audit: v.object({
+    status: v.union(
+      v.literal("pass"),
+      v.literal("review"),
+      v.literal("malicious"),
+      v.literal("pending"),
+      v.literal("error"),
+    ),
+    summary: v.string(),
+    reasonCodes: v.array(v.string()),
+    scanners: v.object({
+      static: v.object({
+        status: v.union(v.literal("clean"), v.literal("suspicious"), v.literal("malicious")),
+        summary: v.string(),
+        reasonCodes: v.array(v.string()),
+        engineVersion: v.string(),
+        checkedAt: v.number(),
+      }),
+    }),
+  }),
+  signature: v.object({
+    status: v.union(v.literal("unsigned"), v.literal("verified"), v.literal("invalid")),
+    format: v.optional(v.string()),
+    bundlePath: v.optional(v.string()),
+    checkedAt: v.optional(v.number()),
+  }),
+});
+
 const skills = defineTable({
   slug: v.string(),
   displayName: v.string(),
@@ -612,6 +704,7 @@ const skillVersions = defineTable({
     }),
   ),
   capabilityTags: v.optional(v.array(v.string())),
+  trustCard: v.optional(skillTrustCardValidator),
   depRegistryAnalysis: v.optional(depRegistryAnalysisValidator),
   depRegistryScanStatus: v.optional(depRegistryStatusValidator),
   staticScan: v.optional(

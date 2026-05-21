@@ -5,6 +5,7 @@ import {
   PLATFORM_SKILL_LICENSE_SUMMARY,
   ApiV1SkillModerationResponseSchema,
   ApiV1SkillResponseSchema,
+  ApiV1SkillTrustCardResponseSchema,
   ApiV1SkillVersionListResponseSchema,
   ApiV1SkillVersionResponseSchema,
 } from "../../schema/index.js";
@@ -20,6 +21,12 @@ type InspectOptions = {
   limit?: number;
   files?: boolean;
   file?: string;
+  json?: boolean;
+};
+
+type VerifySkillOptions = {
+  version?: string;
+  tag?: string;
   json?: boolean;
 };
 
@@ -218,6 +225,48 @@ export async function cmdInspect(opts: GlobalOpts, slug: string, options: Inspec
       process.stdout.write(fileContent);
       if (!fileContent.endsWith("\n")) process.stdout.write("\n");
     }
+  } catch (error) {
+    spinner.fail(formatError(error));
+    throw error;
+  }
+}
+
+export async function cmdVerifySkill(
+  opts: GlobalOpts,
+  slug: string,
+  options: VerifySkillOptions = {},
+) {
+  const trimmed = slug.trim();
+  if (!trimmed) fail("Slug required");
+  if (options.version && options.tag) fail("Use either --version or --tag");
+
+  const token = await getOptionalAuthToken();
+  const registry = await getRegistry(opts, { cache: true });
+  const spinner = createSpinner("Fetching trust card");
+  try {
+    const url = registryUrl(
+      `${ApiRoutes.skills}/${encodeURIComponent(trimmed)}/trust-card`,
+      registry,
+    );
+    if (options.version) {
+      url.searchParams.set("version", options.version);
+    } else if (options.tag) {
+      url.searchParams.set("tag", options.tag);
+    }
+
+    const result = await apiRequest(
+      registry,
+      { method: "GET", url: url.toString(), token },
+      ApiV1SkillTrustCardResponseSchema,
+    );
+    spinner.stop();
+
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    printTrustCardSummary(trimmed, result.trustCard);
   } catch (error) {
     spinner.fail(formatError(error));
     throw error;
@@ -438,6 +487,114 @@ function printSecuritySummary(version: unknown) {
   }
 }
 
+function printTrustCardSummary(slug: string, trustCard: unknown) {
+  const card = normalizeTrustCard(trustCard);
+  if (!card) {
+    console.log(`${slug} trust`);
+    console.log("Trust card: unavailable");
+    return;
+  }
+
+  const version = card.subject?.version ?? "?";
+  const displayName = card.subject?.displayName;
+  console.log(`${card.subject?.slug ?? slug}@${version} trust`);
+  if (displayName) console.log(`Name: ${displayName}`);
+  if (card.publisher) {
+    const publisher = card.publisher.handle ?? card.publisher.displayName;
+    if (publisher) console.log(`Publisher: ${publisher}`);
+  }
+  console.log(`Audit: ${card.audit.status.toUpperCase()}`);
+  if (card.audit.summary) console.log(`Audit Summary: ${truncate(card.audit.summary, 160)}`);
+  if (card.audit.reasonCodes.length)
+    console.log(`Audit Reasons: ${card.audit.reasonCodes.join(", ")}`);
+  console.log(`Signature: ${card.signature.status}`);
+  console.log(`Fingerprint: ${card.artifact.fingerprint}`);
+  console.log(`Files: ${card.artifact.files.length}`);
+  const source = formatTrustCardSource(card.source);
+  if (source) console.log(`Source: ${source}`);
+  if (card.capabilities.tags.length)
+    console.log(`Capabilities: ${card.capabilities.tags.join(", ")}`);
+  const requires = formatTrustCardRequires(card.capabilities.requires);
+  if (requires) console.log(`Requires: ${requires}`);
+}
+
+function normalizeTrustCard(value: unknown) {
+  const record = asRecord(value);
+  if (!record) return null;
+  const subject = asRecord(record.subject);
+  const publisher = asRecord(record.publisher);
+  const artifact = asRecord(record.artifact);
+  const audit = asRecord(record.audit);
+  const signature = asRecord(record.signature);
+  const capabilities = asRecord(record.capabilities);
+  if (!artifact || !audit || !signature || !capabilities) return null;
+
+  const fingerprint = getString(artifact.fingerprint);
+  if (!fingerprint) return null;
+  const auditStatus = getString(audit.status);
+  const signatureStatus = getString(signature.status);
+  if (!auditStatus || !signatureStatus) return null;
+
+  return {
+    subject: subject
+      ? {
+          slug: getString(subject.slug),
+          displayName: getString(subject.displayName),
+          version: getString(subject.version),
+        }
+      : null,
+    publisher: publisher
+      ? {
+          handle: getString(publisher.handle),
+          displayName: getString(publisher.displayName),
+        }
+      : null,
+    source: asRecord(record.source),
+    artifact: {
+      fingerprint,
+      files: Array.isArray(artifact.files) ? artifact.files : [],
+    },
+    audit: {
+      status: auditStatus,
+      summary: getString(audit.summary),
+      reasonCodes: getStringArray(audit.reasonCodes),
+    },
+    signature: {
+      status: signatureStatus,
+    },
+    capabilities: {
+      tags: getStringArray(capabilities.tags),
+      requires: asRecord(capabilities.requires),
+    },
+  };
+}
+
+function formatTrustCardSource(source: Record<string, unknown> | null | undefined) {
+  if (!source) return null;
+  const repo = getString(source.repo);
+  const commit = getString(source.commit);
+  const path = getString(source.path);
+  const url = getString(source.url);
+  if (repo && commit && path) return `${repo}@${commit.slice(0, 12)} ${path}`;
+  return url ?? null;
+}
+
+function formatTrustCardRequires(requires: Record<string, unknown> | null | undefined) {
+  if (!requires) return null;
+  const parts = [
+    formatRequirementList("env", requires.env),
+    formatRequirementList("bins", requires.bins),
+    formatRequirementList("anyBins", requires.anyBins),
+    formatRequirementList("config", requires.config),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join("; ") : null;
+}
+
+function formatRequirementList(label: string, value: unknown) {
+  const items = getStringArray(value);
+  return items.length ? `${label}=${items.join(",")}` : null;
+}
+
 function normalizeSecurity(security: unknown): SecurityStatus | null {
   if (!security || typeof security !== "object") return null;
   const value = security as {
@@ -499,4 +656,20 @@ function clampLimit(limit: number, fallback: number) {
 function truncate(str: string, maxLen: number) {
   if (str.length <= maxLen) return str;
   return `${str.slice(0, maxLen - 3)}...`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : [];
 }
