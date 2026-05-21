@@ -37,6 +37,8 @@ type SkillAuditRow = {
   ownerHandle: string | null;
   latestVersion: {
     version: string;
+    clawScanVerdict?: string | null;
+    clawScanState?: string | null;
     vtAnalysis?: VtAnalysis | null;
     llmAnalysis?: LlmAnalysis | null;
   } | null;
@@ -63,6 +65,8 @@ type PluginAuditRow = {
   };
   latestRelease: {
     version: string;
+    clawScanVerdict?: string | null;
+    clawScanState?: string | null;
     vtAnalysis?: VtAnalysis | null;
     llmAnalysis?: LlmAnalysis | null;
   } | null;
@@ -274,7 +278,10 @@ function AuditsPage() {
 
 function AuditTableRow({ row }: { row: AuditRow }) {
   const latest = row.kind === "plugin" ? row.latestRelease : row.latestVersion;
-  const clawScanStatus = getClawScanDisplayStatus(latest?.llmAnalysis ?? null);
+  const clawScanStatus = getClawScanDisplayStatus(latest?.llmAnalysis ?? null, {
+    clawScanVerdict: latest?.clawScanVerdict ?? null,
+    clawScanState: latest?.clawScanState ?? null,
+  });
   const vtStatus = getVirusTotalDisplayStatus(latest?.vtAnalysis ?? null);
   const ownerHandle = row.kind === "plugin" ? row.package.ownerHandle : row.ownerHandle;
   const displayName = row.kind === "plugin" ? row.package.displayName : row.skill.displayName;

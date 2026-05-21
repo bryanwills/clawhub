@@ -457,9 +457,7 @@ const skills = defineTable({
   moderationStatus: moderationStatusValidator,
   moderationNotes: v.optional(v.string()),
   moderationReason: v.optional(v.string()),
-  moderationVerdict: v.optional(
-    v.union(v.literal("clean"), v.literal("suspicious"), v.literal("malicious")),
-  ),
+  moderationVerdict: v.optional(v.union(v.literal("clean"), v.literal("malicious"))),
   moderationReasonCodes: v.optional(v.array(v.string())),
   moderationEvidence: v.optional(
     v.array(
@@ -498,7 +496,6 @@ const skills = defineTable({
       evaluatedAt: v.number(),
     }),
   ),
-  isSuspicious: v.optional(v.boolean()),
   moderationFlags: v.optional(v.array(v.string())),
   lastReviewedAt: v.optional(v.number()),
   // VT scan tracking
@@ -551,23 +548,7 @@ const skills = defineTable({
   ])
   .index("by_canonical", ["canonicalSkillId"])
   .index("by_fork_of", ["forkOf.skillId"])
-  .index("by_moderation", ["moderationStatus", "moderationReason"])
-  .index("by_nonsuspicious_updated", ["softDeletedAt", "isSuspicious", "updatedAt"])
-  .index("by_nonsuspicious_created", ["softDeletedAt", "isSuspicious", "createdAt"])
-  .index("by_nonsuspicious_name", ["softDeletedAt", "isSuspicious", "displayName"])
-  .index("by_nonsuspicious_downloads", [
-    "softDeletedAt",
-    "isSuspicious",
-    "statsDownloads",
-    "updatedAt",
-  ])
-  .index("by_nonsuspicious_stars", ["softDeletedAt", "isSuspicious", "statsStars", "updatedAt"])
-  .index("by_nonsuspicious_installs", [
-    "softDeletedAt",
-    "isSuspicious",
-    "statsInstallsAllTime",
-    "updatedAt",
-  ]);
+  .index("by_moderation", ["moderationStatus", "moderationReason"]);
 
 const skillSlugAliases = defineTable({
   slug: v.string(),
@@ -824,7 +805,7 @@ const embeddingSkillMap = defineTable({
 }).index("by_embedding", ["embeddingId"]);
 
 // Lightweight projection of skill docs for search hydration (~800 bytes vs ~3-5KB).
-// Contains exactly the fields needed by toPublicSkill() + isPublicSkillDoc() + isSkillSuspicious().
+// Contains exactly the fields needed by toPublicSkill() + isPublicSkillDoc().
 const skillSearchDigest = defineTable({
   skillId: v.id("skills"),
   slug: v.string(),
@@ -870,7 +851,6 @@ const skillSearchDigest = defineTable({
   moderationStatus: moderationStatusValidator,
   moderationFlags: v.optional(v.array(v.string())),
   moderationReason: v.optional(v.string()),
-  isSuspicious: v.optional(v.boolean()),
   createdAt: v.number(),
   updatedAt: v.number(),
 })
@@ -892,45 +872,13 @@ const skillSearchDigest = defineTable({
     "statsInstallsAllTime",
     "updatedAt",
   ])
-  .index("by_nonsuspicious_updated", ["softDeletedAt", "isSuspicious", "updatedAt"])
-  .index("by_nonsuspicious_created", ["softDeletedAt", "isSuspicious", "createdAt"])
-  .index("by_nonsuspicious_name", ["softDeletedAt", "isSuspicious", "displayName"])
-  .index("by_nonsuspicious_normalized_slug", ["softDeletedAt", "isSuspicious", "normalizedSlug"])
-  .index("by_nonsuspicious_normalized_display_name", [
-    "softDeletedAt",
-    "isSuspicious",
-    "normalizedDisplayName",
-  ])
-  .index("by_nonsuspicious_normalized_slug_first_token", [
-    "softDeletedAt",
-    "isSuspicious",
-    "normalizedSlugFirstToken",
-  ])
-  .index("by_nonsuspicious_normalized_display_name_first_token", [
-    "softDeletedAt",
-    "isSuspicious",
-    "normalizedDisplayNameFirstToken",
-  ])
-  .index("by_nonsuspicious_downloads", [
-    "softDeletedAt",
-    "isSuspicious",
-    "statsDownloads",
-    "updatedAt",
-  ])
-  .index("by_nonsuspicious_stars", ["softDeletedAt", "isSuspicious", "statsStars", "updatedAt"])
-  .index("by_nonsuspicious_installs", [
-    "softDeletedAt",
-    "isSuspicious",
-    "statsInstallsAllTime",
-    "updatedAt",
-  ])
   .searchIndex("search_by_display_name", {
     searchField: "displayName",
-    filterFields: ["softDeletedAt", "isSuspicious"],
+    filterFields: ["softDeletedAt"],
   })
   .searchIndex("search_by_slug", {
     searchField: "slug",
-    filterFields: ["softDeletedAt", "isSuspicious"],
+    filterFields: ["softDeletedAt"],
   });
 
 const packages = defineTable({

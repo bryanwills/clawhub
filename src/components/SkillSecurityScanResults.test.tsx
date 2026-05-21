@@ -208,6 +208,44 @@ describe("SecurityScanResults static guidance", () => {
     expect(screen.getByText("Requires paid service")).toBeTruthy();
   });
 
+  it("renders pending canonical ClawScan state over stale clean analysis", () => {
+    render(
+      <SecurityScanResults
+        clawScanVerdict="clean"
+        clawScanState="running"
+        llmAnalysis={{
+          status: "clean",
+          verdict: "clean",
+          checkedAt: Date.now(),
+          summary: "Previous clean result.",
+        }}
+        variant="badge"
+      />,
+    );
+
+    expect(screen.getByText("Pending")).toBeTruthy();
+    expect(screen.queryByText("Pass")).toBeNull();
+  });
+
+  it("keeps malicious canonical ClawScan badges authoritative during rescans", () => {
+    render(
+      <SecurityScanResults
+        clawScanVerdict="malicious"
+        clawScanState="running"
+        llmAnalysis={{
+          status: "malicious",
+          verdict: "malicious",
+          checkedAt: Date.now(),
+          summary: "Previous malicious result.",
+        }}
+        variant="badge"
+      />,
+    );
+
+    expect(screen.getByText("Malicious")).toBeTruthy();
+    expect(screen.queryByText("Pending")).toBeNull();
+  });
+
   it("hides advisory static findings from the public scan panel", () => {
     render(
       <SecurityScanResults
@@ -441,6 +479,7 @@ describe("SecurityScanResults static guidance", () => {
           version: "1.0.0",
           detailPath: "/local/todo-guard",
         }}
+        clawScanVerdict="warn"
         llmAnalysis={clawScanAnalysis}
         clawScanNote="Publisher says the Todoist token is required for task sync."
       />,
@@ -740,6 +779,7 @@ describe("SecurityScanResults static guidance", () => {
           version: "1.0.0",
           detailPath: "/local/todo-guard",
         }}
+        clawScanVerdict="warn"
         llmAnalysis={clawScanAnalysis}
       />,
     );
@@ -817,6 +857,7 @@ describe("SecurityScanResults static guidance", () => {
           version: "1.0.0",
           detailPath: "/local/todo-guard",
         }}
+        clawScanVerdict="warn"
         llmAnalysis={clawScanAnalysis}
         canManageArtifact
         settingsHref="/local/todo-guard/settings"
@@ -837,6 +878,7 @@ describe("SecurityScanResults static guidance", () => {
         version: "1.0.0",
         detailPath: "/local/todo-guard",
       },
+      clawScanVerdict: "warn",
       llmAnalysis: clawScanAnalysis,
       settingsHref: "/local/todo-guard/settings",
     };
@@ -863,6 +905,7 @@ describe("SecurityScanResults static guidance", () => {
           detailPath: "/plugins/plugin-guard",
         }}
         sha256hash="seeded-plugin-hash"
+        clawScanVerdict="warn"
         llmAnalysis={clawScanAnalysis}
         vtAnalysis={{ status: "clean", checkedAt: 1 }}
       />,
@@ -892,6 +935,7 @@ describe("SecurityScanResults static guidance", () => {
           detailPath: "/local/hash-guard",
         }}
         sha256hash="abc123"
+        clawScanVerdict="clean"
         vtAnalysis={{
           status: "clean",
           verdict: "benign",
@@ -935,6 +979,7 @@ describe("SecurityScanResults static guidance", () => {
           detailPath: "/local/hash-guard",
         }}
         sha256hash="abc123"
+        clawScanVerdict="clean"
         vtAnalysis={{
           status: "clean",
           source: "engines",
@@ -1040,6 +1085,7 @@ describe("SecurityScanResults static guidance", () => {
           detailPath: "/plugins/@opik/opik-openclaw",
         }}
         sha256hash="abc123"
+        clawScanVerdict="clean"
         vtAnalysis={{
           status: "clean",
           verdict: "undetected-only-fallback",
@@ -1137,6 +1183,7 @@ describe("SecurityScanResults static guidance", () => {
           version: "2.0.0",
           detailPath: "/plugins/plugin-guard",
         }}
+        clawScanVerdict="clean"
         llmAnalysis={legacyClawScanAnalysis}
       />,
     );
@@ -1164,6 +1211,7 @@ describe("SecurityScanResults static guidance", () => {
           version: "1.0.0",
           detailPath: "/local/legacy-skill",
         }}
+        clawScanVerdict="clean"
         llmAnalysis={legacyClawScanAnalysis}
       />,
     );

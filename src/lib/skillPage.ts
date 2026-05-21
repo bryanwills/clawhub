@@ -22,11 +22,10 @@ export type SkillBySlugResult = {
   moderationInfo?: {
     isPendingScan: boolean;
     isMalwareBlocked: boolean;
-    isSuspicious: boolean;
     isHiddenByMod: boolean;
     isRemoved: boolean;
     overrideActive?: boolean;
-    verdict?: "clean" | "suspicious" | "malicious";
+    verdict?: "clean" | "malicious";
     reasonCodes?: string[];
     summary?: string | null;
     engineVersion?: string | null;

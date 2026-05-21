@@ -147,9 +147,8 @@ describe("cmdInspect", () => {
       latestVersion: { version: "2.0.0", createdAt: 3, changelog: "init", license: "MIT-0" },
       owner: null,
       moderation: {
-        isSuspicious: true,
         isMalwareBlocked: false,
-        verdict: "suspicious",
+        verdict: "clean",
         reasonCodes: ["network-send", "credential-pattern"],
         updatedAt: 1_700_000_000_000,
         engineVersion: "scanner-v2",
@@ -160,7 +159,7 @@ describe("cmdInspect", () => {
     await cmdInspect(makeGlobalOpts(), "demo");
 
     expect(httpMocks.apiRequest).toHaveBeenCalledTimes(1);
-    expect(mockLog).toHaveBeenCalledWith("Moderation: SUSPICIOUS");
+    expect(mockLog).toHaveBeenCalledWith("Moderation: CLEAN");
     expect(mockLog).toHaveBeenCalledWith("Reasons: network-send, credential-pattern");
     expect(mockLog).toHaveBeenCalledWith("Moderation Updated: 2023-11-14T22:13:20.000Z");
     expect(mockLog).toHaveBeenCalledWith("Moderation Engine: scanner-v2");
@@ -188,9 +187,8 @@ describe("cmdInspect", () => {
       })
       .mockResolvedValueOnce({
         moderation: {
-          isSuspicious: true,
           isMalwareBlocked: false,
-          verdict: "suspicious",
+          verdict: "clean",
           reasonCodes: ["suspicious.dynamic_code_execution"],
           updatedAt: 1_700_000_000_000,
           engineVersion: "scanner-v2",
@@ -208,7 +206,7 @@ describe("cmdInspect", () => {
       path: `${ApiRoutes.skills}/${encodeURIComponent("demo")}/moderation`,
       token: "tkn",
     });
-    expect(mockLog).toHaveBeenCalledWith("Moderation: SUSPICIOUS");
+    expect(mockLog).toHaveBeenCalledWith("Moderation: CLEAN");
     expect(mockLog).toHaveBeenCalledWith("Reasons: suspicious.dynamic_code_execution");
     expect(mockLog).toHaveBeenCalledWith("Moderation Reason: quality.low");
     expect(mockLog).toHaveBeenCalledWith(
@@ -222,9 +220,8 @@ describe("cmdInspect", () => {
       .mockRejectedValueOnce(new Error("Skill is hidden by quality checks."))
       .mockResolvedValueOnce({
         moderation: {
-          isSuspicious: true,
           isMalwareBlocked: false,
-          verdict: "suspicious",
+          verdict: "clean",
           reasonCodes: [],
           updatedAt: null,
           engineVersion: null,
@@ -259,7 +256,6 @@ describe("cmdInspect", () => {
       latestVersion: null,
       owner: null,
       moderation: {
-        isSuspicious: false,
         isMalwareBlocked: false,
         verdict: "clean",
         reasonCodes: [],
@@ -273,7 +269,6 @@ describe("cmdInspect", () => {
 
     const output = JSON.parse(String(mockLog.mock.calls[0]?.[0]));
     expect(output.moderation).toEqual({
-      isSuspicious: false,
       isMalwareBlocked: false,
       verdict: "clean",
       reasonCodes: [],

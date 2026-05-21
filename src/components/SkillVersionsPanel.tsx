@@ -56,6 +56,8 @@ export function SkillVersionsPanel({
                     {!suppressScanResults && (version.sha256hash || version.llmAnalysis) ? (
                       <SecurityScanResults
                         sha256hash={version.sha256hash}
+                        clawScanVerdict={version.clawScanVerdict}
+                        clawScanState={version.clawScanState}
                         vtAnalysis={version.vtAnalysis}
                         llmAnalysis={version.llmAnalysis as LlmAnalysis | undefined}
                         variant="badge"

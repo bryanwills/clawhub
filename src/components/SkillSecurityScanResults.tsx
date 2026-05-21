@@ -129,6 +129,8 @@ type StaticFinding = {
 
 type SecurityScanResultsProps = {
   sha256hash?: string;
+  clawScanVerdict?: string | null;
+  clawScanState?: string | null;
   vtAnalysis?: VtAnalysis | null;
   llmAnalysis?: LlmAnalysis | null;
   staticFindings?: StaticFinding[];
@@ -207,8 +209,28 @@ function isVisibleAgenticRiskFinding(finding: LlmAgenticRiskFinding) {
   );
 }
 
-export function getClawScanDisplayStatus(analysis?: LlmAnalysis | null) {
-  const status = (analysis?.verdict ?? analysis?.status)?.trim().toLowerCase();
+export function getClawScanDisplayStatus(
+  analysis?: LlmAnalysis | null,
+  canonical?: { clawScanVerdict?: string | null; clawScanState?: string | null },
+) {
+  const verdict = (
+    canonical?.clawScanVerdict ??
+    analysis?.verdict ??
+    (analysis?.status === "completed" ? null : analysis?.status)
+  )
+    ?.trim()
+    .toLowerCase();
+  const state =
+    canonical?.clawScanState?.trim().toLowerCase() ??
+    (analysis
+      ? analysis.status === "completed" && analysis.verdict
+        ? "complete"
+        : analysis.status.trim().toLowerCase()
+      : undefined);
+  if (verdict === "malicious") return "malicious";
+  if (state === "pending" || state === "running") return "pending";
+  if (state === "error" || state === "failed") return "error";
+  const status = verdict;
   if (!status) return "pending";
   if (status === "benign") return "clean";
   if (status === "suspicious") return "review";
@@ -658,21 +680,26 @@ function LlmAnalysisDetail({ analysis }: { analysis: LlmAnalysis }) {
 
 export function SecurityScanResults({
   sha256hash,
+  clawScanVerdict,
+  clawScanState,
   vtAnalysis,
   llmAnalysis,
   capabilityTags,
   variant = "panel",
 }: SecurityScanResultsProps) {
   const visibleCapabilityTags = (capabilityTags ?? []).filter(Boolean);
-  if (!sha256hash && !llmAnalysis && visibleCapabilityTags.length === 0) {
+  const hasClawScanSignal = Boolean(clawScanVerdict || clawScanState || llmAnalysis);
+  if (!sha256hash && !hasClawScanSignal && visibleCapabilityTags.length === 0) {
     return null;
   }
 
   const vtStatus = getVirusTotalDisplayStatus(vtAnalysis);
   const vtUrl = sha256hash ? `https://www.virustotal.com/gui/file/${sha256hash}` : null;
-  const llmVerdict = llmAnalysis?.verdict ?? llmAnalysis?.status;
-  const llmDisplayStatus = getClawScanDisplayStatus(llmAnalysis);
-  const llmStatusInfo = llmVerdict ? getScanStatusInfo(llmDisplayStatus) : null;
+  const llmDisplayStatus = getClawScanDisplayStatus(llmAnalysis, {
+    clawScanVerdict,
+    clawScanState,
+  });
+  const llmStatusInfo = hasClawScanSignal ? getScanStatusInfo(llmDisplayStatus) : null;
 
   if (variant === "badge") {
     return (

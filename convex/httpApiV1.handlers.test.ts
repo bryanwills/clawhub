@@ -830,7 +830,6 @@ describe("httpApiV1 handlers", () => {
       query: "test",
       limit: 5,
       highlightedOnly: true,
-      nonSuspiciousOnly: undefined,
     });
   });
 
@@ -874,62 +873,6 @@ describe("httpApiV1 handlers", () => {
           },
         },
       ],
-    });
-  });
-
-  it("search forwards nonSuspiciousOnly", async () => {
-    const runAction = vi.fn().mockResolvedValue([]);
-    const runMutation = vi.fn().mockResolvedValue(okRate());
-    const response = await __handlers.searchSkillsV1Handler(
-      makeCtx({ runAction, runMutation }),
-      new Request("https://example.com/api/v1/search?q=test&nonSuspiciousOnly=1"),
-    );
-    if (response.status !== 200) {
-      throw new Error(await response.text());
-    }
-    expect(runAction).toHaveBeenCalledWith(expect.anything(), {
-      query: "test",
-      limit: undefined,
-      highlightedOnly: undefined,
-      nonSuspiciousOnly: true,
-    });
-  });
-
-  it("search forwards legacy nonSuspicious alias", async () => {
-    const runAction = vi.fn().mockResolvedValue([]);
-    const runMutation = vi.fn().mockResolvedValue(okRate());
-    const response = await __handlers.searchSkillsV1Handler(
-      makeCtx({ runAction, runMutation }),
-      new Request("https://example.com/api/v1/search?q=test&nonSuspicious=1"),
-    );
-    if (response.status !== 200) {
-      throw new Error(await response.text());
-    }
-    expect(runAction).toHaveBeenCalledWith(expect.anything(), {
-      query: "test",
-      limit: undefined,
-      highlightedOnly: undefined,
-      nonSuspiciousOnly: true,
-    });
-  });
-
-  it("search prefers canonical nonSuspiciousOnly over legacy alias", async () => {
-    const runAction = vi.fn().mockResolvedValue([]);
-    const runMutation = vi.fn().mockResolvedValue(okRate());
-    const response = await __handlers.searchSkillsV1Handler(
-      makeCtx({ runAction, runMutation }),
-      new Request(
-        "https://example.com/api/v1/search?q=test&nonSuspiciousOnly=false&nonSuspicious=1",
-      ),
-    );
-    if (response.status !== 200) {
-      throw new Error(await response.text());
-    }
-    expect(runAction).toHaveBeenCalledWith(expect.anything(), {
-      query: "test",
-      limit: undefined,
-      highlightedOnly: undefined,
-      nonSuspiciousOnly: undefined,
     });
   });
 
@@ -1333,54 +1276,6 @@ describe("httpApiV1 handlers", () => {
     expect(runQuery).not.toHaveBeenCalled();
   });
 
-  it("lists skills forwards nonSuspiciousOnly", async () => {
-    const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
-      if ("sort" in args || "cursor" in args || "numItems" in args) {
-        expect(args.nonSuspiciousOnly).toBe(true);
-        return { page: [], nextCursor: null };
-      }
-      return null;
-    });
-    const runMutation = vi.fn().mockResolvedValue(okRate());
-    const response = await __handlers.listSkillsV1Handler(
-      makeCtx({ runQuery, runMutation }),
-      new Request("https://example.com/api/v1/skills?nonSuspiciousOnly=true"),
-    );
-    expect(response.status).toBe(200);
-  });
-
-  it("lists skills forwards legacy nonSuspicious alias", async () => {
-    const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
-      if ("sort" in args || "cursor" in args || "numItems" in args) {
-        expect(args.nonSuspiciousOnly).toBe(true);
-        return { page: [], nextCursor: null };
-      }
-      return null;
-    });
-    const runMutation = vi.fn().mockResolvedValue(okRate());
-    const response = await __handlers.listSkillsV1Handler(
-      makeCtx({ runQuery, runMutation }),
-      new Request("https://example.com/api/v1/skills?nonSuspicious=1"),
-    );
-    expect(response.status).toBe(200);
-  });
-
-  it("lists skills prefers canonical nonSuspiciousOnly over legacy alias", async () => {
-    const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
-      if ("sort" in args || "cursor" in args || "numItems" in args) {
-        expect(args.nonSuspiciousOnly).toBeUndefined();
-        return { page: [], nextCursor: null };
-      }
-      return null;
-    });
-    const runMutation = vi.fn().mockResolvedValue(okRate());
-    const response = await __handlers.listSkillsV1Handler(
-      makeCtx({ runQuery, runMutation }),
-      new Request("https://example.com/api/v1/skills?nonSuspiciousOnly=false&nonSuspicious=1"),
-    );
-    expect(response.status).toBe(200);
-  });
-
   it("get skill returns 404 when missing", async () => {
     const runQuery = vi.fn().mockResolvedValue(null);
     const runMutation = vi.fn().mockResolvedValue(okRate());
@@ -1459,9 +1354,8 @@ describe("httpApiV1 handlers", () => {
           },
           owner: { handle: "p", displayName: "Peter", image: null },
           moderationInfo: {
-            isSuspicious: true,
             isMalwareBlocked: false,
-            verdict: "suspicious",
+            verdict: "clean",
             reasonCodes: ["suspicious.dynamic_code_execution"],
             summary: "Detected: suspicious.dynamic_code_execution",
             engineVersion: "v2.0.0",
@@ -1485,9 +1379,8 @@ describe("httpApiV1 handlers", () => {
     expect(json.skill.slug).toBe("demo");
     expect(json.latestVersion.version).toBe("1.0.0");
     expect(json.moderation).toEqual({
-      isSuspicious: true,
       isMalwareBlocked: false,
-      verdict: "suspicious",
+      verdict: "clean",
       reasonCodes: ["suspicious.dynamic_code_execution"],
       summary: "Detected: suspicious.dynamic_code_execution",
       engineVersion: "v2.0.0",
@@ -1517,7 +1410,6 @@ describe("httpApiV1 handlers", () => {
           },
           owner: null,
           moderationInfo: {
-            isSuspicious: false,
             isMalwareBlocked: false,
             verdict: "clean",
             reasonCodes: [],
@@ -1542,7 +1434,7 @@ describe("httpApiV1 handlers", () => {
     expect(json.skill.slug).toBe("reports");
   });
 
-  it("get moderation returns redacted evidence for public flagged skill", async () => {
+  it("get moderation returns redacted evidence for public malware-blocked skill", async () => {
     let slugCalls = 0;
     const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
       if ("slug" in args) {
@@ -1552,20 +1444,20 @@ describe("httpApiV1 handlers", () => {
             _id: "skills:1",
             slug: "demo",
             ownerUserId: "users:owner",
-            moderationFlags: ["flagged.suspicious"],
-            moderationVerdict: "suspicious",
-            moderationReasonCodes: ["suspicious.dynamic_code_execution"],
-            moderationSummary: "Detected: suspicious.dynamic_code_execution",
+            moderationFlags: ["blocked.malware"],
+            moderationVerdict: "malicious",
+            moderationReasonCodes: ["malicious.known_blocked_signature"],
+            moderationSummary: "Detected: malicious.known_blocked_signature",
             moderationEngineVersion: "v2.0.0",
             moderationEvaluatedAt: 5,
-            moderationReason: "scanner.llm.suspicious",
+            moderationReason: "scanner.llm.malicious",
             moderationEvidence: [
               {
-                code: "suspicious.dynamic_code_execution",
+                code: "malicious.known_blocked_signature",
                 severity: "critical",
                 file: "index.ts",
                 line: 3,
-                message: "Dynamic code execution detected.",
+                message: "Known malicious signature detected.",
                 evidence: "eval(payload)",
               },
             ],
@@ -1587,11 +1479,10 @@ describe("httpApiV1 handlers", () => {
           latestVersion: null,
           owner: null,
           moderationInfo: {
-            isSuspicious: true,
-            isMalwareBlocked: false,
-            verdict: "suspicious",
-            reasonCodes: ["suspicious.dynamic_code_execution"],
-            summary: "Detected: suspicious.dynamic_code_execution",
+            isMalwareBlocked: true,
+            verdict: "malicious",
+            reasonCodes: ["malicious.known_blocked_signature"],
+            summary: "Detected: malicious.known_blocked_signature",
             engineVersion: "v2.0.0",
             updatedAt: 5,
           },
@@ -1628,8 +1519,8 @@ describe("httpApiV1 handlers", () => {
             ownerUserId: "users:owner",
             moderationStatus: "hidden",
             moderationReason: "quality.low",
-            moderationFlags: ["flagged.suspicious"],
-            moderationVerdict: "suspicious",
+            moderationFlags: undefined,
+            moderationVerdict: "clean",
             moderationReasonCodes: ["suspicious.dynamic_code_execution"],
             moderationSummary: "Detected: suspicious.dynamic_code_execution",
             moderationEngineVersion: "v2.0.0",
@@ -1695,7 +1586,6 @@ describe("httpApiV1 handlers", () => {
           latestVersion: null,
           owner: null,
           moderationInfo: {
-            isSuspicious: false,
             isMalwareBlocked: false,
             verdict: "clean",
             reasonCodes: [],
@@ -2438,7 +2328,6 @@ describe("httpApiV1 handlers", () => {
           moderationInfo: {
             isPendingScan: false,
             isMalwareBlocked: false,
-            isSuspicious: true,
             isHiddenByMod: false,
             isRemoved: false,
           },
@@ -2467,7 +2356,6 @@ describe("httpApiV1 handlers", () => {
       createdAt: 1,
     });
     expect(json.moderation.matchesRequestedVersion).toBe(true);
-    expect(json.moderation.isSuspicious).toBe(true);
   });
 
   it("treats completed llm analysis without verdict as error", async () => {
@@ -2501,7 +2389,6 @@ describe("httpApiV1 handlers", () => {
           moderationInfo: {
             isPendingScan: false,
             isMalwareBlocked: false,
-            isSuspicious: false,
             isHiddenByMod: false,
             isRemoved: false,
           },
@@ -2547,7 +2434,6 @@ describe("httpApiV1 handlers", () => {
           moderationInfo: {
             isPendingScan: true,
             isMalwareBlocked: false,
-            isSuspicious: false,
             isHiddenByMod: false,
             isRemoved: false,
           },
@@ -2602,7 +2488,6 @@ describe("httpApiV1 handlers", () => {
           moderationInfo: {
             isPendingScan: false,
             isMalwareBlocked: false,
-            isSuspicious: false,
             isHiddenByMod: false,
             isRemoved: false,
           },
@@ -2654,7 +2539,6 @@ describe("httpApiV1 handlers", () => {
           moderationInfo: {
             isPendingScan: false,
             isMalwareBlocked: false,
-            isSuspicious: false,
             isHiddenByMod: false,
             isRemoved: false,
           },
@@ -2693,7 +2577,6 @@ describe("httpApiV1 handlers", () => {
       createdAt: 2,
     });
     expect(json.moderation.matchesRequestedVersion).toBe(false);
-    expect(json.moderation.isSuspicious).toBe(false);
   });
 
   it("resolves scan by tag and reports moderation context against latest version", async () => {
@@ -2727,7 +2610,6 @@ describe("httpApiV1 handlers", () => {
           moderationInfo: {
             isPendingScan: false,
             isMalwareBlocked: false,
-            isSuspicious: false,
             isHiddenByMod: false,
             isRemoved: false,
           },
@@ -3383,6 +3265,71 @@ describe("httpApiV1 handlers", () => {
         dependencyRegistry: { status: "malicious", rawStatus: "malicious" },
       },
     });
+  });
+
+  it("keeps malicious ClawScan verification blocking while a rescan is running", async () => {
+    const internalVersion = {
+      _id: "skillVersions:1",
+      skillId: "skills:1",
+      version: "1.0.0",
+      createdAt: 1,
+      changelog: "c",
+      fingerprint: "source-fingerprint",
+      files: [
+        { path: "SKILL.md", size: 5, storageId: "storage:1", sha256: "source-sha" },
+        { path: "skill-card.md", size: 12, storageId: "storage:card", sha256: "card-sha" },
+      ],
+      parsed: {},
+      clawScanVerdict: "malicious",
+      clawScanState: "running",
+      llmAnalysis: {
+        status: "malicious",
+        verdict: "malicious",
+        summary: "ClawScan found malicious behavior.",
+        checkedAt: 3,
+      },
+      softDeletedAt: undefined,
+    };
+    const generatedBundleFingerprint = await buildBundleFingerprint(internalVersion.files);
+    const runQuery = vi.fn(async (_query: unknown, args: Record<string, unknown>) => {
+      if ("slug" in args) {
+        return {
+          skill: {
+            _id: "skills:1",
+            slug: "demo",
+            displayName: "Demo",
+            summary: "s",
+            tags: {},
+            stats: {},
+            createdAt: 1,
+            updatedAt: 2,
+            latestVersionId: "skillVersions:1",
+          },
+          latestVersion: { _id: "skillVersions:1", version: "1.0.0" },
+          owner: null,
+        };
+      }
+      if ("skillVersionId" in args) {
+        return [
+          { fingerprint: generatedBundleFingerprint, kind: "generated-bundle", createdAt: 4 },
+        ];
+      }
+      if ("versionId" in args) return internalVersion;
+      return null;
+    });
+    const runMutation = vi.fn().mockResolvedValue(okRate());
+
+    const response = await __handlers.skillsGetRouterV1Handler(
+      makeCtx({ runQuery, runMutation, storage: { get: vi.fn() } }),
+      new Request("https://example.com/api/v1/skills/demo/verify"),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.ok).toBe(false);
+    expect(json.decision).toBe("fail");
+    expect(json.reasons).toEqual(["security.status_not_clean"]);
+    expect(json.security).toMatchObject({ status: "malicious", passed: false });
   });
 
   it("returns ok false when verification has no card or clean scan result", async () => {

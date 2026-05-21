@@ -215,7 +215,6 @@ export const searchSkills: ReturnType<typeof action> = action({
     query: v.string(),
     limit: v.optional(v.number()),
     highlightedOnly: v.optional(v.boolean()),
-    nonSuspiciousOnly: v.optional(v.boolean()),
     capabilityTag: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<PublicSearchResult[]> => {
@@ -227,7 +226,6 @@ export const searchSkills: ReturnType<typeof action> = action({
     const rawExactSlugMatch = isSlugLikeQuery(query)
       ? ((await ctx.runQuery(internal.search.getExactSkillSlugMatch, {
           slug: query.toLowerCase(),
-          nonSuspiciousOnly: args.nonSuspiciousOnly,
         })) as SkillSearchEntry | null)
       : null;
     const exactSlugMatch =
@@ -239,7 +237,6 @@ export const searchSkills: ReturnType<typeof action> = action({
     const directPrefixMatches = (await ctx.runQuery(internal.search.directPrefixSkillMatches, {
       query,
       highlightedOnly: args.highlightedOnly,
-      nonSuspiciousOnly: args.nonSuspiciousOnly,
       capabilityTag: args.capabilityTag,
     })) as SkillSearchEntry[];
     let vector: number[] | null;
@@ -282,7 +279,6 @@ export const searchSkills: ReturnType<typeof action> = action({
         if (newEmbeddingIds.length > 0) {
           const newEntries = (await ctx.runQuery(internal.search.hydrateResults, {
             embeddingIds: newEmbeddingIds,
-            nonSuspiciousOnly: args.nonSuspiciousOnly,
           })) as SkillSearchEntry[];
           hydrated = [...hydrated, ...newEntries];
         }
@@ -333,7 +329,6 @@ export const searchSkills: ReturnType<typeof action> = action({
               FALLBACK_SCAN_LIMIT,
             ),
             highlightedOnly: args.highlightedOnly,
-            nonSuspiciousOnly: args.nonSuspiciousOnly,
             capabilityTag: args.capabilityTag,
             skipExactSlugLookup: true,
           })) as SkillSearchEntry[]);
@@ -371,7 +366,6 @@ export const searchSkills: ReturnType<typeof action> = action({
 export const getExactSkillSlugMatch = internalQuery({
   args: {
     slug: v.string(),
-    nonSuspiciousOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<SkillSearchEntry | null> => {
     const skill = await ctx.db
@@ -398,7 +392,6 @@ export const directPrefixSkillMatches = internalQuery({
   args: {
     query: v.string(),
     highlightedOnly: v.optional(v.boolean()),
-    nonSuspiciousOnly: v.optional(v.boolean()),
     capabilityTag: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<SkillSearchEntry[]> => {
@@ -529,7 +522,6 @@ export const directPrefixSkillMatches = internalQuery({
 export const hydrateResults = internalQuery({
   args: {
     embeddingIds: v.array(v.id("skillEmbeddings")),
-    nonSuspiciousOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<SkillSearchEntry[]> => {
     // Only used as fallback when digest doesn't have owner data.
@@ -587,7 +579,6 @@ export const lexicalFallbackSkills = internalQuery({
     queryTokens: v.array(v.string()),
     limit: v.optional(v.number()),
     highlightedOnly: v.optional(v.boolean()),
-    nonSuspiciousOnly: v.optional(v.boolean()),
     capabilityTag: v.optional(v.string()),
     skipExactSlugLookup: v.optional(v.boolean()),
   },
