@@ -403,6 +403,32 @@ const skillCardGenerationJobSourceValidator = v.union(
   v.literal("scan"),
   v.literal("manual"),
 );
+const securityScanArtifactKindValidator = v.union(v.literal("skill"), v.literal("plugin"));
+const securityScanDigestTargetKindValidator = v.union(
+  v.literal("skillVersion"),
+  v.literal("packageRelease"),
+);
+const clawScanDigestVerdictValidator = v.union(
+  v.literal("pass"),
+  v.literal("suspicious"),
+  v.literal("malicious"),
+  v.literal("pending"),
+  v.literal("failed"),
+  v.literal("unknown"),
+);
+const securityScanPipelineStatusValidator = v.union(
+  v.literal("none"),
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+);
+const securityScanFailureStatusValidator = v.union(v.literal("none"), v.literal("failed"));
+const securityScanRollupKindValidator = v.union(
+  v.literal("all"),
+  v.literal("clawscanRiskBucket"),
+  v.literal("clawscanCategory"),
+);
 
 const packageFilesValidator = v.array(
   v.object({
@@ -970,6 +996,7 @@ const packages = defineTable({
     "updatedAt",
   ])
   .index("by_family_updated", ["family", "updatedAt"])
+  .index("by_family_and_soft_deleted_at_and_updated_at", ["family", "softDeletedAt", "updatedAt"])
   .index("by_family_channel_updated", ["family", "channel", "updatedAt"])
   .index("by_family_official_updated", ["family", "isOfficial", "updatedAt"])
   .index("by_runtime_id", ["runtimeId"])
@@ -1094,7 +1121,174 @@ const securityScanJobs = defineTable({
   .index("by_status_and_lease_expires_at", ["status", "leaseExpiresAt"])
   .index("by_status_malicious_signal_next_run_at", ["status", "hasMaliciousSignal", "nextRunAt"])
   .index("by_skill_version", ["skillVersionId"])
-  .index("by_package_release", ["packageReleaseId"]);
+  .index("by_skill_version_and_updated_at", ["skillVersionId", "updatedAt"])
+  .index("by_package_release", ["packageReleaseId"])
+  .index("by_package_release_and_updated_at", ["packageReleaseId", "updatedAt"]);
+
+const securityScanArtifactStates = defineTable({
+  artifactKind: securityScanArtifactKindValidator,
+  targetKind: securityScanDigestTargetKindValidator,
+  artifactKey: v.string(),
+  targetKey: v.string(),
+  skillId: v.optional(v.id("skills")),
+  skillVersionId: v.optional(v.id("skillVersions")),
+  packageId: v.optional(v.id("packages")),
+  packageReleaseId: v.optional(v.id("packageReleases")),
+  ownerUserId: v.id("users"),
+  ownerPublisherId: v.optional(v.id("publishers")),
+  slug: v.optional(v.string()),
+  name: v.optional(v.string()),
+  displayName: v.string(),
+  version: v.optional(v.string()),
+  clawScanVerdict: clawScanDigestVerdictValidator,
+  clawScanStatus: v.optional(v.string()),
+  clawScanCheckedAt: v.optional(v.number()),
+  clawScanSummary: v.optional(v.string()),
+  clawScanModel: v.optional(v.string()),
+  clawScanPrimaryRiskBucket: v.optional(v.string()),
+  clawScanPrimaryCategoryKey: v.optional(v.string()),
+  clawScanPrimaryCategoryLabel: v.optional(v.string()),
+  clawScanVisibleFindingCount: v.optional(v.number()),
+  clawScanHighestSeverity: v.optional(v.string()),
+  scanJobStatus: securityScanPipelineStatusValidator,
+  failureStatus: securityScanFailureStatusValidator,
+  lastScanJobId: v.optional(v.id("securityScanJobs")),
+  lastScanJobSource: v.optional(securityScanJobSourceValidator),
+  lastScanQueuedAt: v.optional(v.number()),
+  lastScanStartedAt: v.optional(v.number()),
+  lastScanCompletedAt: v.optional(v.number()),
+  lastScanFailedAt: v.optional(v.number()),
+  lastScanUpdatedAt: v.optional(v.number()),
+  lastError: v.optional(v.string()),
+  skillSpectorStatus: v.optional(v.string()),
+  skillSpectorScore: v.optional(v.number()),
+  skillSpectorSeverity: v.optional(v.string()),
+  skillSpectorRecommendation: v.optional(v.string()),
+  skillSpectorIssueCount: v.optional(v.number()),
+  skillSpectorTopCategory: v.optional(v.string()),
+  skillSpectorCheckedAt: v.optional(v.number()),
+  staticStatus: v.optional(v.string()),
+  staticReasonCount: v.optional(v.number()),
+  staticCheckedAt: v.optional(v.number()),
+  vtStatus: v.optional(v.string()),
+  vtVerdict: v.optional(v.string()),
+  vtMalicious: v.optional(v.number()),
+  vtSuspicious: v.optional(v.number()),
+  vtCheckedAt: v.optional(v.number()),
+  evidenceUpdatedAt: v.optional(v.number()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_artifact_kind_and_artifact_key", ["artifactKind", "artifactKey"])
+  .index("by_artifact_kind_and_updated_at", ["artifactKind", "updatedAt"])
+  .index("by_target_kind_and_target_key", ["targetKind", "targetKey"])
+  .index("by_artifact_kind_and_claw_scan_verdict_and_updated_at", [
+    "artifactKind",
+    "clawScanVerdict",
+    "updatedAt",
+  ])
+  .index("by_artifact_kind_and_scan_job_status_and_updated_at", [
+    "artifactKind",
+    "scanJobStatus",
+    "updatedAt",
+  ])
+  .index("by_artifact_kind_and_failure_status_and_updated_at", [
+    "artifactKind",
+    "failureStatus",
+    "updatedAt",
+  ])
+  .index("by_kind_claw_category_updated_at", [
+    "artifactKind",
+    "clawScanPrimaryCategoryKey",
+    "updatedAt",
+  ])
+  .index("by_artifact_kind_and_display_name", ["artifactKind", "displayName"]);
+
+const securityScanCurrentRollups = defineTable({
+  artifactKind: securityScanArtifactKindValidator,
+  rollupKind: securityScanRollupKindValidator,
+  categoryKey: v.string(),
+  categoryLabel: v.optional(v.string()),
+  clawScanVerdict: clawScanDigestVerdictValidator,
+  scanJobStatus: securityScanPipelineStatusValidator,
+  failureStatus: securityScanFailureStatusValidator,
+  count: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_artifact_kind_and_rollup_kind_and_category_key", [
+    "artifactKind",
+    "rollupKind",
+    "categoryKey",
+  ])
+  .index("by_kind_rollup_category_verdict_job_failure", [
+    "artifactKind",
+    "rollupKind",
+    "categoryKey",
+    "clawScanVerdict",
+    "scanJobStatus",
+    "failureStatus",
+  ]);
+
+const securityScanHourlyRollups = defineTable({
+  bucketStartMs: v.number(),
+  artifactKind: securityScanArtifactKindValidator,
+  clawScanVerdict: clawScanDigestVerdictValidator,
+  scanJobStatus: securityScanPipelineStatusValidator,
+  failureStatus: securityScanFailureStatusValidator,
+  count: v.number(),
+  updatedAt: v.number(),
+})
+  .index("by_bucket_start_ms_and_artifact_kind", ["bucketStartMs", "artifactKind"])
+  .index("by_artifact_kind_and_bucket_start_ms", ["artifactKind", "bucketStartMs"])
+  .index("by_artifact_kind_and_bucket_start_ms_and_claw_scan_verdict", [
+    "artifactKind",
+    "bucketStartMs",
+    "clawScanVerdict",
+  ])
+  .index("by_artifact_kind_and_bucket_start_ms_and_scan_job_status", [
+    "artifactKind",
+    "bucketStartMs",
+    "scanJobStatus",
+  ])
+  .index("by_artifact_kind_and_bucket_start_ms_and_failure_status", [
+    "artifactKind",
+    "bucketStartMs",
+    "failureStatus",
+  ])
+  .index("by_bucket_kind_verdict_job_failure", [
+    "bucketStartMs",
+    "artifactKind",
+    "clawScanVerdict",
+    "scanJobStatus",
+    "failureStatus",
+  ]);
+
+const securityScanHourlyRollupEvents = defineTable({
+  eventKey: v.string(),
+  bucketStartMs: v.number(),
+  artifactKind: securityScanArtifactKindValidator,
+  clawScanVerdict: clawScanDigestVerdictValidator,
+  scanJobStatus: securityScanPipelineStatusValidator,
+  failureStatus: securityScanFailureStatusValidator,
+  count: v.number(),
+  createdAt: v.number(),
+})
+  .index("by_event_key", ["eventKey"])
+  .index("by_bucket_start_ms_and_artifact_kind", ["bucketStartMs", "artifactKind"]);
+
+const securityScanDigestMetadata = defineTable({
+  key: v.string(),
+  artifactKind: v.optional(securityScanArtifactKindValidator),
+  cursor: v.optional(v.union(v.string(), v.null())),
+  isDone: v.boolean(),
+  scannedCount: v.number(),
+  upsertedCount: v.number(),
+  skippedCount: v.number(),
+  startedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  lastError: v.optional(v.string()),
+  updatedAt: v.number(),
+}).index("by_key", ["key"]);
 
 const skillCardGenerationJobs = defineTable({
   skillId: v.id("skills"),
@@ -1985,6 +2179,11 @@ export default defineSchema({
   packages,
   packageReleases,
   securityScanJobs,
+  securityScanArtifactStates,
+  securityScanCurrentRollups,
+  securityScanHourlyRollups,
+  securityScanHourlyRollupEvents,
+  securityScanDigestMetadata,
   skillCardGenerationJobs,
   packageStatEvents,
   packageTrustedPublishers,

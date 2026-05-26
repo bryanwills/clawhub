@@ -154,6 +154,36 @@ See also: [acceptable-usage.md](./acceptable-usage.md) for the marketplace polic
 - Packages cache VirusTotal undetected-only engine results as clean VT telemetry.
   ClawHub does not request or consume VirusTotal AI/code-insight results; VT is
   engine/vendor telemetry only.
+- Staff production visibility reads ClawScan status from digest tables instead
+  of aggregating `skills`, `skillVersions`, `packages`, `packageReleases`, and
+  `securityScanJobs` live. `securityScanArtifactStates` has one current row per
+  latest skill/plugin artifact, keyed by artifact and target version/release.
+  ClawScan/Codex `llmAnalysis` is the verdict source of truth; SkillSpector,
+  static analysis, and VirusTotal fields are evidence for drilldown, not the
+  primary verdict.
+- `securityScanCurrentRollups` stores current counts by artifact kind,
+  ClawScan verdict, pipeline status, failure status, and optional ClawScan risk
+  category. `securityScanHourlyRollups` stores bounded hourly scan-event counts
+  for recent time-window views. Hourly writes must go through idempotent
+  `securityScanHourlyRollupEvents` rows keyed by the source scan event/job so a
+  replayed lifecycle write does not double-count. These rollups are
+  intentionally narrow counters, not an audit ledger; detailed truth remains on
+  the version/release, scan job, moderation timeline, and `auditLogs` rows.
+- Digest repair is cursor-based and replayable. Backfill page mutations rebuild
+  active skill/plugin artifact states from indexed active listings and latest
+  version/release rows, then adjust current rollups from previous state to next
+  state in the same mutation. If artifact-state rows drift, operators should
+  rerun the relevant backfill from a null cursor and continue with returned
+  cursors until `isDone` is true, then run stale-state pruning pages to remove
+  digest rows for artifacts that were deleted or superseded while the digest was
+  stale. If current rollup counts drift independently, operators should clear
+  current rollup pages for the artifact kind and rebuild them from
+  `securityScanArtifactStates`.
+- Scale warning: these digests are appropriate while the dashboard needs compact
+  operational visibility. If product requirements shift toward arbitrary
+  historical slicing across many dimensions, the risk is row explosion in hourly
+  rollups and expensive repair runs; prefer adding one specific indexed
+  dimension at a time over storing every scanner finding as a rollup row.
 - Skill moderation state stores a structured ClawScan moderation snapshot:
   - `moderationVerdict`: `clean | suspicious | malicious`
   - `moderationReasonCodes[]`: canonical machine-readable reasons
