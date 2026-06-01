@@ -35,6 +35,7 @@ import { getSkillBadgeMap, getSkillBadgeMaps, isSkillHighlighted } from "./lib/b
 import { scheduleNextBatchIfNeeded } from "./lib/batching";
 import { generateChangelogPreview as buildChangelogPreview } from "./lib/changelog";
 import { embeddingVisibilityFor } from "./lib/embeddingVisibility";
+import { sourceLinkMatchesProvenance } from "./lib/githubAppSync";
 import {
   canHealSkillOwnershipByGitHubProviderAccountId,
   getGitHubProviderAccountId,
@@ -10467,6 +10468,54 @@ export const hardDeleteInternal = internalMutation({
   },
 });
 
+async function enforceSourceManagedPublishBoundary(
+  ctx: MutationCtx,
+  params: {
+    skill: Doc<"skills">;
+    sourceProvenance?: Doc<"skillVersions">["sourceProvenance"];
+    sourceSync?: {
+      sourceLinkId: Id<"skillSourceLinks">;
+      repositoryId: Id<"publisherGitHubRepositories">;
+      syncJobId?: Id<"githubSkillSyncJobs">;
+    };
+  },
+) {
+  let links: Doc<"skillSourceLinks">[];
+  try {
+    links = await ctx.db
+      .query("skillSourceLinks")
+      .withIndex("by_skill", (q) => q.eq("skillId", params.skill._id))
+      .collect();
+  } catch (error) {
+    if (isMissingSourceLinkTableError(error)) return;
+    throw error;
+  }
+  const managedLinks = links.filter((link) => link.status !== "disabled");
+  if (managedLinks.length === 0) return;
+
+  const matchingLink = managedLinks.find((link) =>
+    sourceLinkMatchesProvenance({
+      link,
+      sourceProvenance: params.sourceProvenance,
+      sourceSync: params.sourceSync,
+      expectedSourceLinkId: link._id,
+    }),
+  );
+  if (matchingLink) return;
+
+  throw new ConvexError(
+    "This skill is managed by GitHub sync. Unlink source management before publishing manually.",
+  );
+}
+
+function isMissingSourceLinkTableError(error: unknown) {
+  return (
+    error instanceof Error &&
+    (/unexpected (query )?table:? skillSourceLinks/i.test(error.message) ||
+      error.message === "__owner_migration_sentinel_stop__")
+  );
+}
+
 export const insertVersion = internalMutation({
   args: {
     userId: v.id("users"),
@@ -10495,6 +10544,13 @@ export const insertVersion = internalMutation({
         commit: v.string(),
         path: v.optional(v.string()),
         importedAt: v.number(),
+      }),
+    ),
+    sourceSync: v.optional(
+      v.object({
+        sourceLinkId: v.id("skillSourceLinks"),
+        repositoryId: v.id("publisherGitHubRepositories"),
+        syncJobId: v.optional(v.id("githubSkillSyncJobs")),
       }),
     ),
     tags: v.optional(v.array(v.string())),
@@ -10604,6 +10660,14 @@ export const insertVersion = internalMutation({
       .query("skills")
       .withIndex("by_slug", (q) => q.eq("slug", normalizedSlug))
       .unique();
+
+    if (skill) {
+      await enforceSourceManagedPublishBoundary(ctx, {
+        skill,
+        sourceProvenance: args.sourceProvenance,
+        sourceSync: args.sourceSync,
+      });
+    }
 
     if (skill && skill.softDeletedAt && !(await canUserManageSkillOwner(ctx, skill, userId))) {
       const unpublishedReservationExpiresAt = await getUnpublishedSlugReservationExpiresAt(
