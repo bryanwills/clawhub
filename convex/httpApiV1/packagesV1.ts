@@ -55,8 +55,6 @@ import {
 } from "../lib/publishLimits";
 import { compareRecommendationStats } from "../lib/recommendationScore";
 import {
-  getPublicSkillVersionAccessBlock,
-  getPublicSkillVersionDownloadBlock,
   getPublicSkillVersionFileAccessBlock,
   getSkillFileModerationInfoFromSkill,
   isSkillVersionForSkill,
@@ -2932,12 +2930,10 @@ async function getUnavailableSkillPackageVersionBlock(
   if (!version || !isSkillVersionForSkill(version, skill._id)) return null;
   if (version.softDeletedAt) return { status: 410, message: "Version not available" };
 
-  return (
-    getPublicSkillVersionAccessBlock(
-      getSkillFileModerationInfoFromSkill(skill),
-      version._id,
-      skill.latestVersionId ?? skill.tags?.latest,
-    ) ?? getPublicSkillVersionFileAccessBlock(version)
+  return getPublicSkillVersionFileAccessBlock(
+    version,
+    getSkillFileModerationInfoFromSkill(skill),
+    skill.latestVersionId ?? skill.tags?.latest,
   );
 }
 
@@ -3498,13 +3494,13 @@ export async function packagesGetRouterV1Handler(ctx: ActionCtx, request: Reques
       if (!version || version.softDeletedAt) return text("Version not found", 404, rate.headers);
       const effectiveLatestVersionId =
         skillDetail.skill.latestVersionId ?? skillDetail.skill.tags?.latest;
-      const moderationBlock = getPublicSkillVersionAccessBlock(
+      const versionAccessBlock = getPublicSkillVersionFileAccessBlock(
+        version,
         skillDetail.moderationInfo,
-        version._id,
         effectiveLatestVersionId,
-      ) ?? getPublicSkillVersionFileAccessBlock(version);
-      if (moderationBlock)
-        return text(moderationBlock.message, moderationBlock.status, rate.headers);
+      );
+      if (versionAccessBlock)
+        return text(versionAccessBlock.message, versionAccessBlock.status, rate.headers);
       const tags = await resolveSkillTags(ctx, skillDetail.skill._id, skillDetail.skill.tags);
       return json(
         {
@@ -3590,13 +3586,13 @@ export async function packagesGetRouterV1Handler(ctx: ActionCtx, request: Reques
       if (!version || version.softDeletedAt) return text("Version not found", 404, rate.headers);
       const effectiveLatestVersionId =
         skillDetail.skill.latestVersionId ?? skillDetail.skill.tags?.latest;
-      const moderationBlock = getPublicSkillVersionDownloadBlock(
-        skillDetail.moderationInfo,
+      const versionAccessBlock = getPublicSkillVersionFileAccessBlock(
         version,
+        skillDetail.moderationInfo,
         effectiveLatestVersionId,
       );
-      if (moderationBlock)
-        return text(moderationBlock.message, moderationBlock.status, rate.headers);
+      if (versionAccessBlock)
+        return text(versionAccessBlock.message, versionAccessBlock.status, rate.headers);
       const file = resolveSkillFilePath(version, path);
       if (!file) return text("File not found", 404, rate.headers);
       if (!("storageId" in file) || !file.storageId)
