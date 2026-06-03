@@ -77,10 +77,10 @@ export async function isOfficialPublisher(
   for (const officialOrgHandle of OFFICIAL_ORG_HANDLES) {
     const officialOrg = await getPublisherByHandle(ctx, officialOrgHandle);
     if (!officialOrg || officialOrg.deletedAt || officialOrg.deactivatedAt) continue;
-    if (!(await isOfficialOrgPublisher(ctx, officialOrg))) continue;
-
     const membership = await getPublisherMembership(ctx, officialOrg._id, publisher.linkedUserId);
-    if (membership) return true;
+    if (!membership) continue;
+    if (!(await isOfficialOrgPublisher(ctx, officialOrg))) continue;
+    return true;
   }
 
   return false;
