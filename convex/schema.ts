@@ -706,6 +706,12 @@ const skills = defineTable({
     "statsDownloads",
     "updatedAt",
   ])
+  .index("by_owner_publisher_active_installs", [
+    "ownerPublisherId",
+    "softDeletedAt",
+    "statsInstallsAllTime",
+    "updatedAt",
+  ])
   .index("by_updated", ["updatedAt"])
   .index("by_stats_downloads", ["statsDownloads", "updatedAt"])
   .index("by_stats_stars", ["statsStars", "updatedAt"])
@@ -1175,6 +1181,12 @@ const packages = defineTable({
     "ownerPublisherId",
     "softDeletedAt",
     "stats.downloads",
+    "updatedAt",
+  ])
+  .index("by_owner_publisher_active_installs", [
+    "ownerPublisherId",
+    "softDeletedAt",
+    "stats.installs",
     "updatedAt",
   ])
   .index("by_family_updated", ["family", "updatedAt"])

@@ -33,7 +33,6 @@ import { readCanonicalStat } from "./lib/skillStats";
 const PUBLISHER_HANDLE_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const MAX_PUBLIC_PUBLISHER_LIST_LIMIT = 500;
 const PUBLISHER_LIST_PREVIEW_LIMIT = 3;
-const PUBLISHER_LIST_PREVIEW_FETCH_LIMIT = 24;
 const publisherRoleValidator = v.union(
   v.literal("owner"),
   v.literal("admin"),
@@ -52,6 +51,9 @@ type PublisherPublishedItem = {
   kind: "skill" | "plugin";
   displayName: string;
   downloads: number;
+};
+type PublisherPublishedPreviewItem = PublisherPublishedItem & {
+  installs: number;
 };
 
 type PublisherCatalogItem = {
@@ -196,41 +198,22 @@ async function getPublisherPublishedPreviewRows(
   publisherId: Id<"publishers">,
 ): Promise<PublisherPublishedRows> {
   const [skills, packages] = await Promise.all([
-    getPublisherPublishedPreviewSkills(ctx, publisherId),
+    ctx.db
+      .query("skills")
+      .withIndex("by_owner_publisher_active_installs", (q) =>
+        q.eq("ownerPublisherId", publisherId).eq("softDeletedAt", undefined),
+      )
+      .order("desc")
+      .take(PUBLISHER_LIST_PREVIEW_LIMIT),
     ctx.db
       .query("packages")
-      .withIndex("by_owner_publisher_active_downloads", (q) =>
+      .withIndex("by_owner_publisher_active_installs", (q) =>
         q.eq("ownerPublisherId", publisherId).eq("softDeletedAt", undefined),
       )
       .order("desc")
       .take(PUBLISHER_LIST_PREVIEW_LIMIT),
   ]);
-  return { skills, packages };
-}
-
-async function getPublisherPublishedPreviewSkills(
-  ctx: Pick<QueryCtx, "db">,
-  publisherId: Id<"publishers">,
-) {
-  const skills: Doc<"skills">[] = [];
-  let cursor: string | null = null;
-  while (skills.length < PUBLISHER_LIST_PREVIEW_LIMIT) {
-    const page = await ctx.db
-      .query("skills")
-      .withIndex("by_owner_publisher_active_downloads", (q) =>
-        q.eq("ownerPublisherId", publisherId).eq("softDeletedAt", undefined),
-      )
-      .order("desc")
-      .paginate({ cursor, numItems: PUBLISHER_LIST_PREVIEW_FETCH_LIMIT });
-    for (const skill of page.page) {
-      if (!isPublicPublishedSkill(skill)) continue;
-      skills.push(skill);
-      if (skills.length >= PUBLISHER_LIST_PREVIEW_LIMIT) break;
-    }
-    if (page.isDone) break;
-    cursor = page.continueCursor;
-  }
-  return skills;
+  return { skills: skills.filter(isPublicPublishedSkill), packages };
 }
 
 function getIndexedPublisherStatsFromRows(rows: PublisherPublishedRows): PublisherListStats {
@@ -254,20 +237,33 @@ function getIndexedPublisherStatsFromRows(rows: PublisherPublishedRows): Publish
 }
 
 function getPublisherPublishedItems(rows: PublisherPublishedRows): PublisherPublishedItem[] {
-  return [
+  const items: PublisherPublishedPreviewItem[] = [
     ...rows.skills.map((skill) => ({
       kind: "skill" as const,
       displayName: skill.displayName,
       downloads: readCanonicalStat(skill, "downloads"),
+      installs: readCanonicalStat(skill, "installsAllTime"),
     })),
     ...rows.packages.map((pkg) => ({
       kind: pkg.family === "skill" ? ("skill" as const) : ("plugin" as const),
       displayName: pkg.displayName,
       downloads: pkg.stats.downloads,
+      installs: pkg.stats.installs,
     })),
-  ]
-    .sort((a, b) => b.downloads - a.downloads || a.displayName.localeCompare(b.displayName))
-    .slice(0, 3);
+  ];
+  return items
+    .sort(
+      (a, b) =>
+        b.installs - a.installs ||
+        b.downloads - a.downloads ||
+        a.displayName.localeCompare(b.displayName),
+    )
+    .slice(0, 3)
+    .map((item) => ({
+      kind: item.kind,
+      displayName: item.displayName,
+      downloads: item.downloads,
+    }));
 }
 
 function buildPluginDetailHref(name: string) {

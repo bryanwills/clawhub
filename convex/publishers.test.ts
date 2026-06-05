@@ -596,7 +596,7 @@ describe("publishers membership controls", () => {
             }
             if (
               (table === "skills" || table === "packages") &&
-              indexName === "by_owner_publisher_active_downloads"
+              indexName === "by_owner_publisher_active_installs"
             ) {
               return indexedRows([]);
             }
@@ -613,7 +613,7 @@ describe("publishers membership controls", () => {
     expect(result.items.map((item) => item.handle)).toEqual(["openclaw"]);
   });
 
-  it("fills publisher previews from visible skills below hidden high-download rows", async () => {
+  it("omits hidden publisher preview skills without scanning extra pages", async () => {
     const publisherRows = [
       {
         _id: "publishers:nvidia",
@@ -631,7 +631,7 @@ describe("publishers membership controls", () => {
       },
     ];
     const skillRows = [
-      ...Array.from({ length: 25 }, (_, index) => 100 - index).map((downloads, index) => ({
+      ...Array.from({ length: 3 }, (_, index) => 100 - index).map((installs, index) => ({
         _id: `skills:hidden-${index}`,
         ownerPublisherId: "publishers:nvidia",
         ownerUserId: "users:nvidia",
@@ -641,11 +641,16 @@ describe("publishers membership controls", () => {
         icon: null,
         softDeletedAt: undefined,
         moderationStatus: "hidden",
-        statsDownloads: downloads,
+        statsDownloads: 1000 - index,
         statsStars: 0,
-        statsInstallsAllTime: 0,
-        stats: { downloads, stars: 0, installsCurrent: 0, installsAllTime: 0 },
-        updatedAt: downloads,
+        statsInstallsAllTime: installs,
+        stats: {
+          downloads: 1000 - index,
+          stars: 0,
+          installsCurrent: installs,
+          installsAllTime: installs,
+        },
+        updatedAt: installs,
       })),
       {
         _id: "skills:visible",
@@ -659,8 +664,8 @@ describe("publishers membership controls", () => {
         moderationStatus: "active",
         statsDownloads: 70,
         statsStars: 0,
-        statsInstallsAllTime: 0,
-        stats: { downloads: 70, stars: 0, installsCurrent: 0, installsAllTime: 0 },
+        statsInstallsAllTime: 1,
+        stats: { downloads: 70, stars: 0, installsCurrent: 1, installsAllTime: 1 },
         updatedAt: 70,
       },
     ];
@@ -685,7 +690,10 @@ describe("publishers membership controls", () => {
                 order: vi.fn(() => ({ collect: vi.fn(async () => publisherRows) })),
               };
             }
-            if (table === "skills" && indexName === "by_owner_publisher_active_downloads") {
+            if (table === "officialPublishers" && indexName === "by_publisher") {
+              return { unique: vi.fn(async () => null) };
+            }
+            if (table === "skills" && indexName === "by_owner_publisher_active_installs") {
               return {
                 order: vi.fn(() => ({
                   take: vi.fn(async (limit: number) =>
@@ -693,26 +701,10 @@ describe("publishers membership controls", () => {
                       .filter((skill) => skill.ownerPublisherId === fields.ownerPublisherId)
                       .slice(0, limit),
                   ),
-                  paginate: vi.fn(
-                    async ({ cursor, numItems }: { cursor: string | null; numItems: number }) => {
-                      const rows = skillRows.filter(
-                        (skill) => skill.ownerPublisherId === fields.ownerPublisherId,
-                      );
-                      const offset = cursor ? Number(cursor) : 0;
-                      const page = rows.slice(offset, offset + numItems);
-                      const nextOffset = offset + page.length;
-                      const isDone = nextOffset >= rows.length;
-                      return {
-                        page,
-                        isDone,
-                        continueCursor: isDone ? "" : String(nextOffset),
-                      };
-                    },
-                  ),
                 })),
               };
             }
-            if (table === "packages" && indexName === "by_owner_publisher_active_downloads") {
+            if (table === "packages" && indexName === "by_owner_publisher_active_installs") {
               return {
                 order: vi.fn(() => ({ take: vi.fn(async () => []) })),
               };
@@ -725,9 +717,7 @@ describe("publishers membership controls", () => {
 
     const result = await listPublicHandler(ctx as never, { limit: 48 });
 
-    expect(result.items[0]?.publishedItems).toEqual([
-      expect.objectContaining({ displayName: "Visible Skill" }),
-    ]);
+    expect(result.items[0]?.publishedItems).toEqual([]);
   });
 
   it("pages public publishers by kind and query", async () => {
@@ -822,7 +812,7 @@ describe("publishers membership controls", () => {
             }
             if (
               (table === "skills" || table === "packages") &&
-              indexName === "by_owner_publisher_active_downloads"
+              indexName === "by_owner_publisher_active_installs"
             ) {
               return indexedRows([]);
             }
@@ -843,7 +833,7 @@ describe("publishers membership controls", () => {
     expect(result.page.map((item) => item.handle)).toEqual(["alice"]);
   });
 
-  it("orders public publisher card previews by downloads", async () => {
+  it("orders public publisher card previews by installs while rendering downloads", async () => {
     const publisherRows = [
       {
         _id: "publishers:openclaw",
@@ -868,8 +858,8 @@ describe("publishers membership controls", () => {
         displayName: "Popular Skill",
         statsDownloads: 98,
         statsStars: 1,
-        statsInstallsAllTime: 1,
-        stats: { downloads: 98, stars: 1, installsCurrent: 1, installsAllTime: 1 },
+        statsInstallsAllTime: 35,
+        stats: { downloads: 98, stars: 1, installsCurrent: 35, installsAllTime: 35 },
         updatedAt: 1,
       },
     ];
@@ -880,7 +870,7 @@ describe("publishers membership controls", () => {
         softDeletedAt: undefined,
         family: "code-plugin",
         displayName: "Popular Plugin",
-        stats: { downloads: 128, stars: 1, installs: 1, versions: 1 },
+        stats: { downloads: 128, stars: 1, installs: 5, versions: 1 },
         updatedAt: 1,
       },
       {
@@ -889,7 +879,7 @@ describe("publishers membership controls", () => {
         softDeletedAt: undefined,
         family: "code-plugin",
         displayName: "Recent Plugin",
-        stats: { downloads: 12, stars: 1, installs: 1, versions: 1 },
+        stats: { downloads: 12, stars: 1, installs: 50, versions: 1 },
         updatedAt: 5,
       },
       {
@@ -898,7 +888,7 @@ describe("publishers membership controls", () => {
         softDeletedAt: undefined,
         family: "code-plugin",
         displayName: "Recent Helper",
-        stats: { downloads: 11, stars: 1, installs: 1, versions: 1 },
+        stats: { downloads: 11, stars: 1, installs: 20, versions: 1 },
         updatedAt: 4,
       },
       {
@@ -907,19 +897,24 @@ describe("publishers membership controls", () => {
         softDeletedAt: undefined,
         family: "code-plugin",
         displayName: "Recent Tool",
-        stats: { downloads: 10, stars: 1, installs: 1, versions: 1 },
+        stats: { downloads: 10, stars: 1, installs: 40, versions: 1 },
         updatedAt: 3,
       },
     ];
-    const rowsByDownloads = <
-      T extends { updatedAt: number; stats?: { downloads: number }; statsDownloads?: number },
+    const rowsByInstalls = <
+      T extends {
+        updatedAt: number;
+        stats?: { installs?: number; installsAllTime?: number };
+        statsInstallsAllTime?: number;
+      },
     >(
       rows: T[],
     ) =>
       [...rows].sort(
         (a, b) =>
-          (b.statsDownloads ?? b.stats?.downloads ?? 0) -
-            (a.statsDownloads ?? a.stats?.downloads ?? 0) || b.updatedAt - a.updatedAt,
+          (b.statsInstallsAllTime ?? b.stats?.installs ?? b.stats?.installsAllTime ?? 0) -
+            (a.statsInstallsAllTime ?? a.stats?.installs ?? a.stats?.installsAllTime ?? 0) ||
+          b.updatedAt - a.updatedAt,
       );
     const ctx = {
       db: {
@@ -944,16 +939,19 @@ describe("publishers membership controls", () => {
                 })),
               };
             }
-            if (table === "skills" && indexName === "by_owner_publisher_active_downloads") {
+            if (table === "officialPublishers" && indexName === "by_publisher") {
+              return { unique: vi.fn(async () => null) };
+            }
+            if (table === "skills" && indexName === "by_owner_publisher_active_installs") {
               return indexedRows(
-                rowsByDownloads(
+                rowsByInstalls(
                   skillRows.filter((skill) => skill.ownerPublisherId === fields.ownerPublisherId),
                 ),
               );
             }
-            if (table === "packages" && indexName === "by_owner_publisher_active_downloads") {
+            if (table === "packages" && indexName === "by_owner_publisher_active_installs") {
               return indexedRows(
-                rowsByDownloads(
+                rowsByInstalls(
                   packageRows.filter((pkg) => pkg.ownerPublisherId === fields.ownerPublisherId),
                 ),
               );
@@ -969,11 +967,12 @@ describe("publishers membership controls", () => {
     });
 
     expect(result.page[0]?.publishedItems.map((item) => item.displayName)).toEqual([
-      "Popular Plugin",
-      "Popular Skill",
       "Recent Plugin",
+      "Recent Tool",
+      "Popular Skill",
     ]);
-    expect(result.page[0]?.publishedItems.map((item) => item.downloads)).toEqual([128, 98, 12]);
+    expect(result.page[0]?.publishedItems.map((item) => item.downloads)).toEqual([12, 10, 98]);
+    expect(result.page[0]?.publishedItems[0]).not.toHaveProperty("installs");
   });
 
   it("does not hydrate every publisher before filtering public publisher pages", async () => {
@@ -1019,7 +1018,7 @@ describe("publishers membership controls", () => {
             }
             if (
               (table === "skills" || table === "packages") &&
-              indexName === "by_owner_publisher_active_downloads"
+              indexName === "by_owner_publisher_active_installs"
             ) {
               ownerPublisherQueries.push(String(fields.ownerPublisherId));
               return indexedRows([]);
