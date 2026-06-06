@@ -1732,6 +1732,13 @@ function makeLexicalCtx(params: {
     takeLimits,
     db: {
       query: vi.fn((table: string) => {
+        if (table === "officialPublishers") {
+          return {
+            withIndex: vi.fn(() => ({
+              unique: vi.fn(async () => null),
+            })),
+          };
+        }
         if (table === "skills") {
           return {
             withIndex: (index: string) => {

@@ -147,6 +147,31 @@ class TestEqBuilder {
   }
 }
 
+type EqQuery = { eq: (field: string, value: unknown) => EqQuery };
+
+function makeNoOfficialPublisherRowsTable() {
+  const q: EqQuery = {
+    eq: vi.fn((_field: string, _value: unknown) => q),
+  };
+  return {
+    withIndex: vi.fn((_indexName: string, build?: (query: EqQuery) => unknown) => {
+      build?.(q);
+      return { unique: vi.fn(async () => null) };
+    }),
+  };
+}
+
+function makeOfficialPublisherRowsOnlyCtx() {
+  return {
+    db: {
+      query: vi.fn((table: string) => {
+        if (table !== "officialPublishers") throw new Error(`unexpected table ${table}`);
+        return makeNoOfficialPublisherRowsTable();
+      }),
+    },
+  };
+}
+
 function makeMissingRecommendedRankStatsCtx() {
   const first = vi.fn(async () => makeSearchDigest({ statsStars: undefined }));
   const withIndex = vi.fn((_indexName: string, build: (q: TestEqBuilder) => unknown) => {
@@ -372,7 +397,7 @@ describe("public skill list deterministic cursors", () => {
     });
 
     const result = await listPublicPageV4Handler(
-      {} as never,
+      makeOfficialPublisherRowsOnlyCtx() as never,
       {
         categoryKeywords: ["dev", "debug", "lint", "test", "build"],
         categorySlug: "dev-tools",
@@ -413,7 +438,7 @@ describe("public skill list deterministic cursors", () => {
       .mockResolvedValueOnce(emptySecurityWindow(28))
       .mockResolvedValueOnce(emptySecurityWindow(27));
 
-    const result = await listPublicPageV4Handler({} as never, {
+    const result = await listPublicPageV4Handler(makeOfficialPublisherRowsOnlyCtx() as never, {
       categoryKeywords: ["security", "scan", "auth", "encrypt"],
       categorySlug: "security",
       nonSuspiciousOnly: false,
@@ -719,6 +744,7 @@ describe("skills.listRelatedByCategory", () => {
       return { order };
     });
     const query = vi.fn((table: string) => {
+      if (table === "officialPublishers") return makeNoOfficialPublisherRowsTable();
       if (table !== "skillSearchDigest") throw new Error(`Unexpected query table: ${table}`);
       return { withIndex };
     });
@@ -788,6 +814,7 @@ describe("skills.listRelatedByCategory", () => {
       return { order };
     });
     const query = vi.fn((table: string) => {
+      if (table === "officialPublishers") return makeNoOfficialPublisherRowsTable();
       if (table !== "skillSearchDigest") throw new Error(`Unexpected query table: ${table}`);
       return { withIndex };
     });
