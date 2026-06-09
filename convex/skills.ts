@@ -65,7 +65,7 @@ import {
 } from "./lib/moderationReasonCodes";
 import {
   createOfficialPublisherLookupCache,
-  isOfficialPublisher,
+  isActiveOfficialPublisherId,
   type OfficialPublisherLookupCache,
   toPublicPublisherWithOfficial,
 } from "./lib/officialPublishers";
@@ -5477,15 +5477,7 @@ async function buildPublicSkillEntryFromDigest(
   const latestVersion = await resolveDigestLatestVersionForSkill(ctx, digest);
   const owner =
     digest.ownerPublisherId &&
-    (await isOfficialPublisher(
-      ctx,
-      {
-        _id: digest.ownerPublisherId,
-        deletedAt: undefined,
-        deactivatedAt: undefined,
-      },
-      officialPublisherCache,
-    ))
+    (await isActiveOfficialPublisherId(ctx, digest.ownerPublisherId, officialPublisherCache))
       ? { ...ownerInfo.owner, official: true }
       : ownerInfo.owner;
   return {

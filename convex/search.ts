@@ -7,6 +7,7 @@ import { isSkillHighlighted } from "./lib/badges";
 import { generateEmbedding } from "./lib/embeddings";
 import {
   createOfficialPublisherLookupCache,
+  isActiveOfficialPublisherId,
   isOfficialPublisher,
   type OfficialPublisherLookupCache,
 } from "./lib/officialPublishers";
@@ -38,15 +39,7 @@ async function markDigestOwnerInfoOfficial(
   cache: OfficialPublisherLookupCache,
 ): Promise<OwnerInfo> {
   if (!ownerInfo.owner || !ownerPublisherId) return ownerInfo;
-  const official = await isOfficialPublisher(
-    ctx,
-    {
-      _id: ownerPublisherId,
-      deletedAt: undefined,
-      deactivatedAt: undefined,
-    },
-    cache,
-  );
+  const official = await isActiveOfficialPublisherId(ctx, ownerPublisherId, cache);
   return official ? { ...ownerInfo, owner: { ...ownerInfo.owner, official: true } } : ownerInfo;
 }
 

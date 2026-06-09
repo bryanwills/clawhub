@@ -52,7 +52,13 @@ const hydrateResultsHandler = (
     _handler: (
       ctx: unknown,
       args: unknown,
-    ) => Promise<Array<{ skill: { slug: string; _id: string }; ownerHandle: string | null }>>;
+    ) => Promise<
+      Array<{
+        skill: { slug: string; _id: string };
+        ownerHandle: string | null;
+        owner: { official?: boolean } | null;
+      }>
+    >;
   }
 )._handler;
 
@@ -1289,6 +1295,7 @@ describe("search helpers", () => {
       displayName: skillDoc.displayName,
       summary: skillDoc.summary,
       ownerUserId: skillDoc.ownerUserId,
+      ownerPublisherId: "publishers:owner",
       ownerHandle: "owner",
       ownerName: "Owner",
       ownerDisplayName: "Owner",
@@ -1315,6 +1322,18 @@ describe("search helpers", () => {
     const getMock = vi.fn(async (id: string) => {
       // Should NOT be called for skills:1 when digest exists
       if (id === "skills:1") throw new Error("Should not read full skill doc");
+      if (id === "publishers:owner") {
+        return {
+          _id: "publishers:owner",
+          _creationTime: 1,
+          kind: "org",
+          handle: "owner",
+          displayName: "Owner",
+          deactivatedAt: 123,
+          createdAt: 1,
+          updatedAt: 1,
+        };
+      }
       if (id === "users:owner") {
         return {
           _id: "users:owner",
@@ -1335,17 +1354,42 @@ describe("search helpers", () => {
         db: {
           get: getMock,
           query: vi.fn((table: string) => ({
-            withIndex: (index: string) => ({
-              unique: vi.fn(async () => {
-                if (table === "embeddingSkillMap" && index === "by_embedding") {
-                  return { embeddingId: "skillEmbeddings:1", skillId: "skills:1" };
-                }
-                if (table === "skillSearchDigest" && index === "by_skill") {
-                  return digestDoc;
-                }
-                return null;
-              }),
-            }),
+            withIndex: (
+              index: string,
+              build?: (q: { eq: (field: string, value: unknown) => unknown }) => unknown,
+            ) => {
+              let requestedPublisherId: string | undefined;
+              const q = {
+                eq: vi.fn((field: string, value: unknown) => {
+                  if (field === "publisherId") requestedPublisherId = String(value);
+                  return q;
+                }),
+              };
+              build?.(q);
+              return {
+                unique: vi.fn(async () => {
+                  if (table === "embeddingSkillMap" && index === "by_embedding") {
+                    return { embeddingId: "skillEmbeddings:1", skillId: "skills:1" };
+                  }
+                  if (table === "skillSearchDigest" && index === "by_skill") {
+                    return digestDoc;
+                  }
+                  if (
+                    table === "officialPublishers" &&
+                    index === "by_publisher" &&
+                    requestedPublisherId === "publishers:owner"
+                  ) {
+                    return {
+                      _id: "officialPublishers:owner",
+                      publisherId: "publishers:owner",
+                      createdAt: 1,
+                      updatedAt: 1,
+                    };
+                  }
+                  return null;
+                }),
+              };
+            },
           })),
         },
       },
@@ -1356,6 +1400,8 @@ describe("search helpers", () => {
     expect(result[0].skill.slug).toBe("digest-skill");
     expect(result[0].skill._id).toBe("skills:1");
     expect(result[0].ownerHandle).toBe("owner");
+    expect(result[0].owner?.official).toBeUndefined();
+    expect(getMock).toHaveBeenCalledWith("publishers:owner");
     // Owner resolved from digest — users table should NOT be read
     expect(getMock).not.toHaveBeenCalledWith("users:owner");
   });

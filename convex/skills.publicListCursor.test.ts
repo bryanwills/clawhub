@@ -52,7 +52,7 @@ type PublicListArgs = {
 };
 
 type PublicListResult = {
-  page: unknown[];
+  page: Array<{ owner?: { handle?: string; official?: boolean } }>;
   hasMore: boolean;
   nextCursor: string | null;
 };
@@ -150,13 +150,33 @@ class TestEqBuilder {
 type EqQuery = { eq: (field: string, value: unknown) => EqQuery };
 
 function makeNoOfficialPublisherRowsTable() {
+  return makeOfficialPublisherRowsTable([]);
+}
+
+function makeOfficialPublisherRowsTable(officialPublisherIds: string[]) {
   const q: EqQuery = {
     eq: vi.fn((_field: string, _value: unknown) => q),
   };
   return {
     withIndex: vi.fn((_indexName: string, build?: (query: EqQuery) => unknown) => {
+      let requestedPublisherId: string | undefined;
+      q.eq = vi.fn((field: string, value: unknown) => {
+        if (field === "publisherId") requestedPublisherId = String(value);
+        return q;
+      });
       build?.(q);
-      return { unique: vi.fn(async () => null) };
+      return {
+        unique: vi.fn(async () =>
+          requestedPublisherId && officialPublisherIds.includes(requestedPublisherId)
+            ? {
+                _id: `officialPublishers:${requestedPublisherId}`,
+                publisherId: requestedPublisherId,
+                createdAt: 1,
+                updatedAt: 1,
+              }
+            : null,
+        ),
+      };
     }),
   };
 }
@@ -516,6 +536,54 @@ describe("public skill list deterministic cursors", () => {
     });
   });
 
+  it("does not mark digest public list owners official when the publisher is deactivated", async () => {
+    getPageMock.mockResolvedValueOnce({
+      page: [
+        makeSearchDigest({
+          ownerPublisherId: "publishers:owner",
+        }),
+      ],
+      hasMore: false,
+      indexKeys: [],
+    });
+    const get = vi.fn(async (id: string) =>
+      id === "publishers:owner"
+        ? {
+            _id: "publishers:owner",
+            _creationTime: 1,
+            kind: "org",
+            handle: "owner",
+            displayName: "Owner",
+            deactivatedAt: 123,
+            createdAt: 1,
+            updatedAt: 1,
+          }
+        : null,
+    );
+    const query = vi.fn((table: string) => {
+      if (table === "officialPublishers") {
+        return makeOfficialPublisherRowsTable(["publishers:owner"]);
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const result = await listPublicPageV4Handler(
+      {
+        db: { get, query },
+      } as never,
+      { numItems: 10, sort: "updated" },
+    );
+
+    expect(get).toHaveBeenCalledWith("publishers:owner");
+    expect(result.page).toHaveLength(1);
+    expect(result.page[0]).toMatchObject({
+      owner: {
+        handle: "owner",
+      },
+    });
+    expect(result.page[0]?.owner?.official).toBeUndefined();
+  });
+
   it("drops stale trending latest versions that belong to another skill", async () => {
     const staleDigest = makeSearchDigest({
       latestVersionId: "skillVersions:other",
@@ -665,7 +733,7 @@ function makeDigest(overrides: Record<string, unknown>) {
     displayName: String(overrides.displayName ?? overrides.slug),
     summary: overrides.summary,
     ownerUserId: "users:owner",
-    ownerPublisherId: "publishers:owner",
+    ownerPublisherId: undefined,
     ownerHandle: "owner",
     ownerKind: "user",
     ownerDisplayName: "Owner",

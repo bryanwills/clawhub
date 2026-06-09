@@ -8,10 +8,11 @@ type OfficialPublisherCandidate = Pick<Doc<"publishers">, "_id" | "deletedAt" | 
 
 export type OfficialPublisherLookupCache = {
   officialByPublisherId: Map<string, Promise<boolean>>;
+  publisherById: Map<string, Promise<Doc<"publishers"> | null>>;
 };
 
 export function createOfficialPublisherLookupCache(): OfficialPublisherLookupCache {
-  return { officialByPublisherId: new Map() };
+  return { officialByPublisherId: new Map(), publisherById: new Map() };
 }
 
 export async function isOfficialPublisher(
@@ -39,6 +40,21 @@ export async function hasOfficialPublisherRow(
     .then(Boolean);
   cache?.officialByPublisherId.set(key, lookup);
   return await lookup;
+}
+
+export async function isActiveOfficialPublisherId(
+  ctx: DbCtx,
+  publisherId: Doc<"publishers">["_id"] | null | undefined,
+  cache?: OfficialPublisherLookupCache,
+): Promise<boolean> {
+  if (!publisherId) return false;
+
+  const key = String(publisherId);
+  const cached = cache?.publisherById.get(key);
+  const publisher = cached ?? ctx.db.get(publisherId);
+  cache?.publisherById.set(key, publisher);
+
+  return await isOfficialPublisher(ctx, await publisher, cache);
 }
 
 export async function toPublicPublisherWithOfficial(
