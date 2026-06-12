@@ -35,6 +35,7 @@ import type {
 import { selectGeneratedSkillCardFile, sourceSkillVersionFiles } from "../lib/skillCards";
 import {
   getPublicSkillFileAccessBlock,
+  getPublicSkillVersionAccessBlock,
   getPublicSkillVersionFileAccessBlock,
   getSkillFileModerationInfoFromSkill,
   isSkillVersionForSkill,
@@ -2029,9 +2030,9 @@ export async function skillsGetRouterV1Handler(ctx: ActionCtx, request: Request)
     if (version.softDeletedAt) return text("Version not available", 410, rate.headers);
 
     const effectiveLatestVersionId = result.skill.latestVersionId ?? result.skill.tags?.latest;
-    const moderationBlock = getPublicSkillVersionFileAccessBlock(
-      version,
+    const moderationBlock = getPublicSkillVersionAccessBlock(
       result.moderationInfo,
+      version._id,
       effectiveLatestVersionId,
     );
     if (moderationBlock) {
