@@ -109,8 +109,9 @@ function makeDigest(
 
 function makeCtx(
   pages: Array<{ page: Array<Record<string, unknown>>; isDone: boolean; continueCursor: string }>,
-  optionsOrIndexNames: { firstByIndex?: Record<string, unknown>; indexNames?: string[] } | string[] =
-    {},
+  optionsOrIndexNames:
+    | { firstByIndex?: Record<string, unknown>; indexNames?: string[] }
+    | string[] = {},
 ) {
   const options = Array.isArray(optionsOrIndexNames)
     ? { indexNames: optionsOrIndexNames }
