@@ -8034,6 +8034,7 @@ describe("httpApiV1 handlers", () => {
       expect(args).toEqual(
         expect.objectContaining({
           category: undefined,
+          sort: "recommended",
           paginationOpts: { cursor: null, numItems: 7 },
         }),
       );
@@ -8133,6 +8134,44 @@ describe("httpApiV1 handlers", () => {
         paginationOpts: { cursor: "install-cursor", numItems: 25 },
       }),
     );
+  });
+
+  it("plugins list install sort forwards to both plugin families and merges by installs", async () => {
+    const codePlugin = makeCatalogItem("code-installed", {
+      family: "code-plugin",
+      updatedAt: 100,
+      stats: { downloads: 1, installs: 50, stars: 0, versions: 1 },
+    });
+    const bundlePlugin = makeCatalogItem("bundle-installed", {
+      family: "bundle-plugin",
+      updatedAt: 200,
+      stats: { downloads: 100, installs: 5, stars: 0, versions: 1 },
+    });
+    const runQuery = vi.fn((_, args: Record<string, unknown>) => {
+      if (Object.keys(args).length === 0) return 2;
+      if (hasPluginRecommendedScoreReadinessArgs(args)) return false;
+      expect(args).toEqual(expect.objectContaining({ sort: "installs" }));
+      if (args.family === "code-plugin") {
+        return { page: [codePlugin], isDone: true, continueCursor: "" };
+      }
+      if (args.family === "bundle-plugin") {
+        return { page: [bundlePlugin], isDone: true, continueCursor: "" };
+      }
+      throw new Error(`unexpected family ${String(args.family)}`);
+    });
+    const runMutation = vi.fn().mockResolvedValue(okRate());
+
+    const response = await __handlers.listPluginsV1Handler(
+      makeCtx({ runQuery, runMutation }),
+      new Request("https://example.com/api/v1/plugins?limit=2&sort=installs"),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.items.map((entry: { name: string }) => entry.name)).toEqual([
+      "code-installed",
+      "bundle-installed",
+    ]);
   });
 
   it("plugins list recommended sort uses weighted scores across plugin families", async () => {

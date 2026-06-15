@@ -109,8 +109,11 @@ function makeDigest(
 
 function makeCtx(
   pages: Array<{ page: Array<Record<string, unknown>>; isDone: boolean; continueCursor: string }>,
-  indexNames: string[] = [],
+  optionsOrIndexNames: { indexNames?: string[] } | string[] = {},
 ) {
+  const indexNames = Array.isArray(optionsOrIndexNames)
+    ? optionsOrIndexNames
+    : optionsOrIndexNames.indexNames;
   const pageByCursor = new Map<
     string | null,
     { page: Array<Record<string, unknown>>; isDone: boolean; continueCursor: string }
@@ -151,7 +154,7 @@ function makeCtx(
 
         return {
           withIndex: (indexName: string) => {
-            indexNames.push(indexName);
+            indexNames?.push(indexName);
             return {
               order: () => ({
                 paginate: async ({ cursor: pageCursor }: { cursor: string | null }) =>
@@ -216,6 +219,46 @@ describe("skills package catalog queries", () => {
         family: "skill",
         channel: "official",
         isOfficial: true,
+      }),
+    ]);
+  });
+
+  it("uses the all-time installs index for install-sorted package catalog rows", async () => {
+    const indexNames: string[] = [];
+    const result = await listPackageCatalogPageHandler(
+      makeCtx(
+        [
+          {
+            page: [
+              makeDigest("installed-skill", {
+                stats: {
+                  downloads: 1,
+                  installsCurrent: 2,
+                  installsAllTime: 20,
+                  stars: 0,
+                  versions: 1,
+                  comments: 0,
+                },
+                statsInstallsAllTime: 20,
+              }),
+            ],
+            isDone: true,
+            continueCursor: "",
+          },
+        ],
+        { indexNames },
+      ),
+      {
+        sort: "installs",
+        paginationOpts: { cursor: null, numItems: 10 },
+      },
+    );
+
+    expect(indexNames).toEqual(["by_active_stats_installs_all_time"]);
+    expect(result.page).toEqual([
+      expect.objectContaining({
+        name: "installed-skill",
+        stats: expect.objectContaining({ installs: 20 }),
       }),
     ]);
   });
