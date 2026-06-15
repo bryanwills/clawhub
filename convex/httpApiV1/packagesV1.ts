@@ -150,6 +150,7 @@ const internalRefs = internal as unknown as {
   };
   skills: {
     getSkillBySlugInternal: unknown;
+    hasMissingPackageCatalogRecommendationScoresInternal: unknown;
     searchPackageCatalogForHttpInternal: unknown;
     getVersionByIdInternal: unknown;
     getVersionBySkillAndVersionInternal: unknown;
@@ -865,6 +866,7 @@ type CatalogSourceCursorState = {
 type UnifiedCatalogCursorState = {
   packages: CatalogSourceCursorState;
   skills: CatalogSourceCursorState;
+  recommendedFallback?: "updated";
 };
 
 type PluginCatalogCursorState = {
@@ -937,6 +939,7 @@ function decodeUnifiedCatalogCursor(raw: string | null | undefined): UnifiedCata
     return {
       packages: normalize(parsed.packages),
       skills: normalize(parsed.skills),
+      recommendedFallback: parsed.recommendedFallback === "updated" ? "updated" : undefined,
     };
   } catch {
     return {
@@ -1551,12 +1554,31 @@ async function listPackages(
   }
 
   if (!effectiveFamily && includeSkills) {
-    const packageSource = initCatalogSource<CatalogListItem>(
-      decodeUnifiedCatalogCursor(cursor).packages,
-    );
-    const skillSource = initCatalogSource<CatalogListItem>(
-      decodeUnifiedCatalogCursor(cursor).skills,
-    );
+    const decodedCursor = decodeUnifiedCatalogCursor(cursor);
+    const isFreshRecommendedRequest = effectiveSort === "recommended" && !cursor;
+    const [hasMissingPackageRecommendationScores, hasMissingSkillRecommendationScores] =
+      isFreshRecommendedRequest
+        ? await Promise.all([
+            runQueryRef<boolean>(
+              ctx,
+              internalRefs.packages.hasMissingRecommendationScoresInternal,
+              {},
+            ),
+            runQueryRef<boolean>(
+              ctx,
+              internalRefs.skills.hasMissingPackageCatalogRecommendationScoresInternal,
+              {},
+            ),
+          ])
+        : [false, false];
+    const useUpdatedRecommendationFallback =
+      effectiveSort === "recommended" &&
+      (decodedCursor.recommendedFallback === "updated" ||
+        (isFreshRecommendedRequest &&
+          (hasMissingPackageRecommendationScores || hasMissingSkillRecommendationScores)));
+    const unifiedListSort = useUpdatedRecommendationFallback ? "updated" : effectiveSort;
+    const packageSource = initCatalogSource<CatalogListItem>(decodedCursor.packages);
+    const skillSource = initCatalogSource<CatalogListItem>(decodedCursor.skills);
     const pageSize = limit;
     const items: CatalogListItem[] = [];
 
@@ -1574,7 +1596,7 @@ async function listPackages(
             executesCode: executesCode.value,
             capabilityTag,
             category,
-            sort: effectiveSort,
+            sort: unifiedListSort,
             viewerUserId: viewerUserId ?? undefined,
             paginationOpts: { cursor: pageCursor, numItems },
           });
@@ -1595,7 +1617,7 @@ async function listPackages(
             highlightedOnly: highlightedOnly || undefined,
             executesCode: executesCode.value,
             capabilityTag,
-            sort: effectiveSort,
+            sort: unifiedListSort,
             paginationOpts: { cursor: pageCursor, numItems },
           });
           return {
@@ -1610,7 +1632,7 @@ async function listPackages(
       if (
         !skillCandidate ||
         (packageCandidate &&
-          compareCatalogItemsForSort(packageCandidate, skillCandidate, effectiveSort) <= 0)
+          compareCatalogItemsForSort(packageCandidate, skillCandidate, unifiedListSort) <= 0)
       ) {
         items.push(packageCandidate!);
         packageSource.index += 1;
@@ -1623,6 +1645,7 @@ async function listPackages(
     const nextState = {
       packages: finalizeCatalogSource(packageSource),
       skills: finalizeCatalogSource(skillSource),
+      recommendedFallback: useUpdatedRecommendationFallback ? ("updated" as const) : undefined,
     };
     const isDoneAll =
       nextState.packages.done &&
