@@ -389,6 +389,17 @@ describe("plugins route", () => {
         limit: 25,
       }),
     );
+
+    await loadPluginsPageData({
+      sort: "updated",
+    });
+
+    expect(fetchPluginCatalogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sort: "updated",
+        limit: 25,
+      }),
+    );
   });
 
   it("forwards category through catalog loading without changing the query", async () => {
@@ -1112,6 +1123,47 @@ describe("plugins route", () => {
     const zulu = screen.getByText("Zulu Plugin");
     const alpha = screen.getByText("Alpha Plugin");
     expect(zulu.compareDocumentPosition(alpha) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("sorts loaded search results by install count", async () => {
+    searchMock = { q: "security", sort: "installs" };
+    loaderDataMock = {
+      items: [
+        {
+          name: "zulu-plugin",
+          displayName: "Zulu Plugin",
+          family: "code-plugin",
+          channel: "community",
+          isOfficial: false,
+          executesCode: true,
+          createdAt: 2,
+          updatedAt: 20,
+          stats: { downloads: 10, installs: 1, stars: 0, versions: 1 },
+        },
+        {
+          name: "alpha-plugin",
+          displayName: "Alpha Plugin",
+          family: "code-plugin",
+          channel: "community",
+          isOfficial: false,
+          executesCode: true,
+          createdAt: 1,
+          updatedAt: 10,
+          stats: { downloads: 1, installs: 10, stars: 0, versions: 1 },
+        },
+      ],
+      nextCursor: null,
+      rateLimited: false,
+      retryAfterSeconds: null,
+    };
+    const route = await loadRoute();
+    const Component = route.__config.component as ComponentType;
+
+    render(<Component />);
+
+    const alpha = screen.getByText("Alpha Plugin");
+    const zulu = screen.getByText("Zulu Plugin");
+    expect(alpha.compareDocumentPosition(zulu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("keeps search sort visible even if a stale featured flag is present", async () => {

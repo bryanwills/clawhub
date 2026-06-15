@@ -146,7 +146,11 @@ export async function loadPluginsPageData(
       featured: args.featured,
       isOfficial: args.official,
       executesCode: args.executesCode,
-      ...(!args.q && (args.sort === "installs" || !args.sort || args.sort === "recommended")
+      ...(!args.q &&
+      (args.sort === "installs" ||
+        args.sort === "updated" ||
+        !args.sort ||
+        args.sort === "recommended")
         ? { sort: args.sort ?? "recommended" }
         : {}),
       limit: PLUGINS_PAGE_SIZE,

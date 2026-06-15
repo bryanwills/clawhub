@@ -1421,7 +1421,11 @@ async function listPackages(
   ctx: ActionCtx,
   request: Request,
   family?: PackageListQueryArgs["family"],
-  options?: { includeSkills?: boolean; pluginFamilies?: Array<"code-plugin" | "bundle-plugin"> },
+  options?: {
+    defaultSort?: (typeof PACKAGE_LIST_SORT_VALUES)[number];
+    includeSkills?: boolean;
+    pluginFamilies?: Array<"code-plugin" | "bundle-plugin">;
+  },
 ) {
   const rate = await applyRateLimit(ctx, request, "read");
   if (!rate.ok) return rate.response;
@@ -1447,7 +1451,9 @@ async function listPackages(
   const sortParam = parseEnumQueryParam(url.searchParams, "sort", PACKAGE_LIST_SORT_VALUES);
   if (!sortParam.ok) return text(sortParam.message, 400, rate.headers);
   const isLegacyDownloadsSort = sortParam.value === "downloads";
-  const sort = isLegacyDownloadsSort ? "installs" : sortParam.value;
+  const effectiveSort = isLegacyDownloadsSort
+    ? "installs"
+    : (sortParam.value ?? options?.defaultSort);
   const cursor = isLegacyDownloadsSort
     ? rawCursor?.startsWith(LEGACY_DOWNLOADS_INSTALL_CURSOR_PREFIX)
       ? rawCursor.slice(LEGACY_DOWNLOADS_INSTALL_CURSOR_PREFIX.length)
@@ -1481,7 +1487,7 @@ async function listPackages(
       highlightedOnly: highlightedOnly || undefined,
       executesCode: executesCode.value,
       capabilityTag,
-      sort,
+      sort: effectiveSort,
       paginationOpts: { cursor, numItems: limit },
     });
     return json(
@@ -1515,7 +1521,7 @@ async function listPackages(
             executesCode: executesCode.value,
             capabilityTag,
             category,
-            sort,
+            sort: effectiveSort,
             viewerUserId: viewerUserId ?? undefined,
             paginationOpts: { cursor: pageCursor, numItems },
           });
@@ -1536,7 +1542,7 @@ async function listPackages(
             highlightedOnly: highlightedOnly || undefined,
             executesCode: executesCode.value,
             capabilityTag,
-            sort,
+            sort: effectiveSort,
             paginationOpts: { cursor: pageCursor, numItems },
           });
           return {
@@ -1551,7 +1557,7 @@ async function listPackages(
       if (
         !skillCandidate ||
         (packageCandidate &&
-          compareCatalogItemsForSort(packageCandidate, skillCandidate, sort) <= 0)
+          compareCatalogItemsForSort(packageCandidate, skillCandidate, effectiveSort) <= 0)
       ) {
         items.push(packageCandidate!);
         packageSource.index += 1;
@@ -1595,7 +1601,7 @@ async function listPackages(
     const decodedCursor = decodePluginCatalogCursor(cursor);
     const codePluginSource = initCatalogSource<CatalogListItem>(decodedCursor.codePlugins);
     const bundlePluginSource = initCatalogSource<CatalogListItem>(decodedCursor.bundlePlugins);
-    const isFreshRecommendedRequest = sort === "recommended" && !cursor;
+    const isFreshRecommendedRequest = effectiveSort === "recommended" && !cursor;
     const hasMissingRecommendationScores = isFreshRecommendedRequest
       ? await runQueryRef<boolean>(
           ctx,
@@ -1606,10 +1612,10 @@ async function listPackages(
         )
       : false;
     const useUpdatedRecommendationFallback =
-      sort === "recommended" &&
+      effectiveSort === "recommended" &&
       (decodedCursor.recommendedFallback === "updated" ||
         (isFreshRecommendedRequest && hasMissingRecommendationScores));
-    const pluginListSort = useUpdatedRecommendationFallback ? "updated" : sort;
+    const pluginListSort = useUpdatedRecommendationFallback ? "updated" : effectiveSort;
     const pageSize = limit;
     const items: CatalogListItem[] = [];
     const fetchPluginPage = async (
@@ -1702,7 +1708,7 @@ async function listPackages(
     executesCode: executesCode.value,
     capabilityTag,
     category,
-    sort,
+    sort: effectiveSort,
     viewerUserId: viewerUserId ?? undefined,
     paginationOpts: { cursor, numItems: limit },
   } satisfies PackageListQueryArgs);
@@ -2101,6 +2107,7 @@ export async function exportPluginsV1Handler(ctx: ActionCtx, request: Request) {
 
 export async function listPluginsV1Handler(ctx: ActionCtx, request: Request) {
   return await listPackages(ctx, request, undefined, {
+    defaultSort: "recommended",
     includeSkills: false,
     pluginFamilies: ["code-plugin", "bundle-plugin"],
   });
