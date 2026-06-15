@@ -787,6 +787,29 @@ describe("plugins route", () => {
     });
   });
 
+  it("keeps recommended explicit when selected from filtered plugin browse", async () => {
+    searchMock = { category: "security" };
+    const route = await loadRoute();
+    const Component = route.__config.component as ComponentType;
+
+    render(<Component />);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Recommended" }));
+
+    const lastCall = navigateMock.mock.calls.at(-1)?.[0] as {
+      replace?: boolean;
+      search: (prev: Record<string, unknown>) => Record<string, unknown>;
+    };
+    expect(lastCall.replace).toBe(true);
+    expect(lastCall.search({ category: "security", cursor: "cursor:current" })).toEqual({
+      category: "security",
+      cursor: undefined,
+      family: undefined,
+      featured: undefined,
+      sort: "recommended",
+    });
+  });
+
   it("returns a retryable empty state when the catalog is rate limited", async () => {
     fetchPluginCatalogMock.mockRejectedValue({ status: 429, retryAfterSeconds: 22 });
     const { loadPluginsPageData } = await import("../routes/plugins/index");

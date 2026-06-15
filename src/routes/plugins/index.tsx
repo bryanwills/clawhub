@@ -130,6 +130,23 @@ function normalizeActivePluginSort(sort: LegacyPluginSort | undefined): PluginSo
   return sort;
 }
 
+function hasPluginBrowseFilter(
+  args: Pick<PluginsPageDataRequest, "category" | "featured" | "official" | "executesCode">,
+) {
+  return Boolean(args.category || args.featured || args.official || args.executesCode);
+}
+
+function getDefaultPluginBrowseSort(
+  args: Pick<PluginsPageDataRequest, "category" | "featured" | "official" | "executesCode">,
+): VisiblePluginSort {
+  return hasPluginBrowseFilter(args) ? "updated" : "recommended";
+}
+
+function hasPersistentPluginBrowseFilter(
+  args: Pick<PluginsPageDataRequest, "category" | "official" | "executesCode">,
+) {
+  return Boolean(args.category || args.official || args.executesCode);
+}
 function isNavigationAbortError(err: unknown, signal?: AbortSignal) {
   if (signal?.aborted) return true;
   return err instanceof Error && err.name === "AbortError";
@@ -416,22 +433,25 @@ function PluginsIndex() {
 
   const handleSortChange = (value: string) => {
     const nextSort = parsePluginSort(value);
-    const sort =
-      nextSort === "recommended" ||
-      nextSort === "relevance" ||
-      nextSort === "newest" ||
-      nextSort === "name"
-        ? undefined
-        : nextSort;
 
     void navigate({
-      search: (prev: PluginSearchState) => ({
-        ...prev,
-        cursor: undefined,
-        family: undefined,
-        featured: undefined,
-        sort,
-      }),
+      search: (prev: PluginSearchState) => {
+        const isExplicitFilteredRecommendation =
+          nextSort === "recommended" && !prev.q && hasPersistentPluginBrowseFilter(prev);
+        const sort =
+          isExplicitFilteredRecommendation || nextSort === "installs"
+            ? nextSort
+            : nextSort === "updated"
+              ? "updated"
+              : undefined;
+        return {
+          ...prev,
+          cursor: undefined,
+          family: undefined,
+          featured: undefined,
+          sort,
+        };
+      },
       replace: true,
     });
   };

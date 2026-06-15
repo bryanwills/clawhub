@@ -1548,9 +1548,7 @@ async function listPackages(
     (highlightedOnly || category || capabilityTag)
       ? "updated"
       : options?.defaultSort;
-  const effectiveSort = isLegacyDownloadsSort
-    ? "installs"
-    : (sortParam.value ?? pluginDefaultSort);
+  const effectiveSort = isLegacyDownloadsSort ? "installs" : (sortParam.value ?? pluginDefaultSort);
   if (category && (effectiveFamily === "skill" || (!effectiveFamily && includeSkills))) {
     return text(
       "Plugin category is only supported for plugin package endpoints",
