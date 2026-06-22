@@ -73,7 +73,6 @@ function scanContent(path, content) {
     findings.push({
       path,
       reason: `matched ${name}`,
-      snippet: match[0].slice(0, 80),
     });
   }
   return findings;
@@ -87,7 +86,6 @@ for (const path of stagedPaths) {
     findings.push({
       path,
       reason: "sensitive file type should not be committed",
-      snippet: path,
     });
     continue;
   }
@@ -109,7 +107,7 @@ console.error(
 console.error("");
 for (const finding of findings) {
   console.error(`- ${finding.path}: ${finding.reason}`);
-  console.error(`  ${finding.snippet}`);
+  console.error("  [REDACTED]");
 }
 console.error("");
 console.error("If a real secret was staged, rotate it before trying again.");
