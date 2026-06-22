@@ -2657,6 +2657,113 @@ describe("packages public queries", () => {
     expect(paginate).toHaveBeenCalledWith({ cursor: null, numItems: 120 });
   });
 
+  it("returns a cursor instead of paginating twice when sorted package filters skip rows", async () => {
+    const firstOfficialChannel = makePackageDoc({
+      _id: "packages:official-channel-1",
+      name: "official-channel-1",
+      normalizedName: "official-channel-1",
+      displayName: "Official Channel 1",
+      family: "bundle-plugin",
+      channel: "official",
+      stats: { downloads: 100, installs: 0, stars: 0, versions: 1 },
+    });
+    const community = makePackageDoc({
+      _id: "packages:community",
+      name: "community",
+      normalizedName: "community",
+      displayName: "Community",
+      family: "bundle-plugin",
+      channel: "community",
+      stats: { downloads: 90, installs: 0, stars: 0, versions: 1 },
+    });
+    const secondOfficialChannel = makePackageDoc({
+      _id: "packages:official-channel-2",
+      name: "official-channel-2",
+      normalizedName: "official-channel-2",
+      displayName: "Official Channel 2",
+      family: "bundle-plugin",
+      channel: "official",
+      stats: { downloads: 80, installs: 0, stars: 0, versions: 1 },
+    });
+    const { ctx, paginate } = makeDigestCtx({
+      packagePages: [
+        { page: [firstOfficialChannel, community], isDone: false, continueCursor: "next-page" },
+        { page: [secondOfficialChannel], isDone: true, continueCursor: "" },
+      ],
+    });
+
+    const first = await listPageForViewerInternalHandler(ctx, {
+      family: "bundle-plugin",
+      channel: "official",
+      sort: "downloads",
+      paginationOpts: { cursor: null, numItems: 2 },
+    });
+
+    expect(first.page.map((entry) => entry.name)).toEqual(["official-channel-1"]);
+    expect(first.isDone).toBe(false);
+    expect(first.continueCursor).toMatch(/^pkgpage:/);
+    expect(paginate).toHaveBeenCalledTimes(1);
+
+    const second = await listPageForViewerInternalHandler(ctx, {
+      family: "bundle-plugin",
+      channel: "official",
+      sort: "downloads",
+      paginationOpts: { cursor: first.continueCursor, numItems: 2 },
+    });
+
+    expect(second.page.map((entry) => entry.name)).toEqual(["official-channel-2"]);
+    expect(second.isDone).toBe(true);
+    expect(paginate).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a cursor instead of paginating twice when digest scan filters skip rows", async () => {
+    const firstClean = makeDigest("clean-1", {
+      scanStatus: "clean",
+      updatedAt: 100,
+    });
+    const suspicious = makeDigest("suspicious", {
+      scanStatus: "suspicious",
+      updatedAt: 90,
+    });
+    const secondClean = makeDigest("clean-2", {
+      scanStatus: "clean",
+      updatedAt: 80,
+    });
+    const thirdClean = makeDigest("clean-3", {
+      scanStatus: "clean",
+      updatedAt: 70,
+    });
+    const { ctx, paginate } = makeDigestCtx({
+      pages: [
+        { page: [firstClean, suspicious, secondClean], isDone: false, continueCursor: "next-page" },
+        { page: [thirdClean], isDone: true, continueCursor: "" },
+      ],
+    });
+
+    const first = await listPageForViewerInternalHandler(ctx, {
+      family: "code-plugin",
+      sort: "updated",
+      excludedScanStatuses: ["suspicious"],
+      paginationOpts: { cursor: null, numItems: 3 },
+    });
+
+    expect(first.page.map((entry) => entry.name)).toEqual(["clean-1", "clean-2"]);
+    expect(first.isDone).toBe(false);
+    expect(first.continueCursor).toMatch(/^pkgpage:/);
+    expect(paginate).toHaveBeenCalledTimes(1);
+
+    const second = await listPageForViewerInternalHandler(ctx, {
+      family: "code-plugin",
+      sort: "updated",
+      excludedScanStatuses: ["suspicious"],
+      paginationOpts: { cursor: first.continueCursor, numItems: 3 },
+    });
+
+    expect(second.page.map((entry) => entry.name)).toEqual(["clean-3"]);
+    expect(second.isDone).toBe(true);
+    expect(paginate).toHaveBeenCalledTimes(2);
+  });
+
   it("uses a family-and-official downloads index for official plugin pages", async () => {
     const { ctx, indexFilters, indexNames, paginate } = makeDigestCtx({
       packagePages: [
@@ -4520,13 +4627,23 @@ describe("packages public queries", () => {
       ],
     });
 
-    const result = await listPublicPageHandler(ctx, {
+    const first = await listPublicPageHandler(ctx, {
       topic: "calendar",
       paginationOpts: { cursor: null, numItems: 1 },
     });
 
-    expect(result.page.map((entry) => entry.name)).toEqual(["calendar-public"]);
-    expect(result.isDone).toBe(true);
+    expect(first.page).toEqual([]);
+    expect(first.isDone).toBe(false);
+    expect(first.continueCursor).toMatch(/^pkgpage:/);
+    expect(paginate).toHaveBeenCalledTimes(1);
+
+    const second = await listPublicPageHandler(ctx, {
+      topic: "calendar",
+      paginationOpts: { cursor: first.continueCursor, numItems: 1 },
+    });
+
+    expect(second.page.map((entry) => entry.name)).toEqual(["calendar-public"]);
+    expect(second.isDone).toBe(true);
     expect(paginate).toHaveBeenCalledTimes(2);
   });
 
@@ -4578,13 +4695,26 @@ describe("packages public queries", () => {
       ],
     });
 
-    const result = await listPublicPageHandler(ctx, {
+    const first = await listPublicPageHandler(ctx, {
       topic: "calendar",
       category: "tools",
       paginationOpts: { cursor: null, numItems: 1 },
     });
 
-    expect(result.page.map((entry) => entry.name)).toEqual(["calendar-api"]);
+    expect(first.page).toEqual([]);
+    expect(first.isDone).toBe(false);
+    expect(first.continueCursor).toMatch(/^pkgpage:/);
+    expect(tableNames).toEqual(["packageTopicSearchDigest"]);
+    expect(indexNames).toEqual(["by_active_topic_updated"]);
+    expect(paginate).toHaveBeenCalledTimes(1);
+
+    const second = await listPublicPageHandler(ctx, {
+      topic: "calendar",
+      category: "tools",
+      paginationOpts: { cursor: first.continueCursor, numItems: 1 },
+    });
+
+    expect(second.page.map((entry) => entry.name)).toEqual(["calendar-api"]);
     expect(tableNames).toEqual(["packageTopicSearchDigest", "packageTopicSearchDigest"]);
     expect(indexNames).toEqual(["by_active_topic_updated", "by_active_topic_updated"]);
     expect(paginate).toHaveBeenCalledTimes(2);
@@ -4604,25 +4734,27 @@ describe("packages public queries", () => {
     }));
     const { ctx, paginate } = makeDigestCtx({ topicPages });
 
-    const first = await listPublicPageHandler(ctx, {
+    let cursor: string | null = null;
+    for (let index = 0; index < 6; index += 1) {
+      const result = await listPublicPageHandler(ctx, {
+        topic: "calendar",
+        category: "tools",
+        paginationOpts: { cursor, numItems: 1 },
+      });
+      expect(result.page).toEqual([]);
+      expect(result.isDone).toBe(false);
+      expect(result.continueCursor.startsWith("pkgpage:")).toBe(true);
+      cursor = result.continueCursor;
+    }
+
+    const final = await listPublicPageHandler(ctx, {
       topic: "calendar",
       category: "tools",
-      paginationOpts: { cursor: null, numItems: 1 },
+      paginationOpts: { cursor, numItems: 1 },
     });
 
-    expect(first.page).toEqual([]);
-    expect(first.isDone).toBe(false);
-    expect(first.continueCursor.startsWith("pkgpage:")).toBe(true);
-    expect(paginate).toHaveBeenCalledTimes(6);
-
-    const second = await listPublicPageHandler(ctx, {
-      topic: "calendar",
-      category: "tools",
-      paginationOpts: { cursor: first.continueCursor, numItems: 1 },
-    });
-
-    expect(second.page.map((entry) => entry.name)).toEqual(["calendar-api"]);
-    expect(second.isDone).toBe(true);
+    expect(final.page.map((entry) => entry.name)).toEqual(["calendar-api"]);
+    expect(final.isDone).toBe(true);
     expect(paginate).toHaveBeenCalledTimes(7);
   });
 
