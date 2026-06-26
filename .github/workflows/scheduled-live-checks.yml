@@ -46,6 +46,9 @@ jobs:
     name: Open failure issue
     needs: github-backed-skills
     if: ${{ always() && needs.github-backed-skills.result == 'failure' }}
+    concurrency:
+      group: clawhub-scheduled-live-checks-failure-issue
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       issues: write
