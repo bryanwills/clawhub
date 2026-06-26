@@ -63,5 +63,5 @@ jobs:
             echo "::error::expires_in_days must be a positive integer"
             exit 1
           fi
-          expires_at="$(node -e 'const days = Number(process.env.EXPIRES_IN_DAYS); console.log(new Date(Date.now() + days * 86400000).toISOString())')"
+          expires_at="$(node -e 'const days = Number(process.env.EXPIRES_IN_DAYS); const expiresAtMs = Date.now() + days * 86400000; const expiresAt = new Date(expiresAtMs); if (!Number.isSafeInteger(days) || !Number.isFinite(expiresAtMs) || Number.isNaN(expiresAt.getTime())) { console.error("::error::expires_in_days is too large for a valid publication expiry"); process.exit(1); } console.log(expiresAt.toISOString())')"
           bunx convex run catalogFeed:publish "{\"expiresAt\":\"$expires_at\"}" --prod
